@@ -12,8 +12,7 @@
 module Data.Rakhana.Internal.Types where
 
 --------------------------------------------------------------------------------
-import qualified Data.ByteString.Lazy as BL
-import           Data.String (IsString(..))
+import Data.ByteString (ByteString)
 
 --------------------------------------------------------------------------------
 data Number
@@ -22,42 +21,20 @@ data Number
     deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
-newtype Boolean = Boolean Bool deriving (Eq, Show)
+type Dictionary = [(ByteString, Object)]
 
 --------------------------------------------------------------------------------
-newtype Name = Name BL.ByteString deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-newtype Dict = Dict [(Name, Object)] deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-newtype Array = Array [Object] deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-newtype Bytes = Bytes BL.ByteString deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-data Stream = Stream Dict Object deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-data Ref = Ref Int Int deriving (Eq, Show)
+type Reference = (Int, Int)
 
 --------------------------------------------------------------------------------
 data Object
-    = ONumber Number
-    | OBoolean Boolean
-    | OName Name
-    | ODict Dict
-    | OArray Array
-    | OBytes Bytes
-    | ORef Ref
-    | ONull
+    = Number Number
+    | Boolean Bool
+    | Name ByteString
+    | Dict Dictionary
+    | Array [Object]
+    | Bytes ByteString
+    | Ref Int Int
+    | Stream Dictionary Object
+    | Null
     deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-instance IsString Name where
-    fromString = Name . fromString
-
---------------------------------------------------------------------------------
-instance IsString Bytes where
-    fromString = Bytes . fromString

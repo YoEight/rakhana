@@ -48,19 +48,23 @@ cabal-version:       >=1.18
 
 library
   -- Modules exported by the library.
-  -- exposed-modules:
+  exposed-modules: Data.Rakhana
 
   -- Modules included in this library but not exported.
   other-modules: Data.Rakhana.Internal.Types
+                 Data.Rakhana.Internal.Parsers
 
   -- LANGUAGE extensions used by modules in this package.
   other-extensions: OverloadedStrings
+                    RankNTypes
 
   -- Other library packages from which modules are imported.
   build-depends:       base       >=4.7 && <4.8
                      , attoparsec == 0.12.*
                      , bytestring
+                     , mtl
                      , pipes      == 4.*
+                     , scientific
 
 
   -- Directories containing source files.
