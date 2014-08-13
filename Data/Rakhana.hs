@@ -1,4 +1,5 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes         #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana
@@ -14,9 +15,11 @@ module Data.Rakhana where
 
 --------------------------------------------------------------------------------
 import Data.ByteString.Lazy (ByteString)
+import Data.Typeable
 
 --------------------------------------------------------------------------------
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Catch (Exception, MonadThrow(..))
+import Control.Monad.Trans (lift)
 import Data.Attoparsec.ByteString.Lazy
 import Pipes
 
@@ -25,18 +28,29 @@ import Data.Rakhana.Internal.Parsers
 import Data.Rakhana.Internal.Types
 
 --------------------------------------------------------------------------------
-produceObjects :: ByteString -> Producer' (Reference, Object) IO ()
-produceObjects start
+data RakhanaParserException
+    = RakhanaParserException [String] String
+    deriving (Show, Typeable)
+
+--------------------------------------------------------------------------------
+instance Exception RakhanaParserException
+
+--------------------------------------------------------------------------------
+makeDocument :: MonadThrow m => ByteString -> m Document
+makeDocument start
     = case parse parseHeader start of
-          Fail _ _ e
-              -> liftIO $ fail e
-          Done rest _
-              -> body rest
-  where
-    body rest
-        = case parse parseIndirectObject rest  of
-              Fail _ _ e ->
-                  liftIO $ fail e
-              Done rest' tup
-                  -> do yield tup
-                        body rest'
+        Fail _ ctx e
+            -> throwM $ RakhanaParserException ctx e
+        Done rest ver
+            -> let doc = Document ver (objectProducer rest) in
+               return doc
+
+--------------------------------------------------------------------------------
+objectProducer :: MonadThrow m => ByteString -> Producer' Structure m ()
+objectProducer bytes
+    = case parse parseIndirectObject bytes of
+          Fail _ ctx e
+              -> lift $ throwM $ RakhanaParserException ctx e
+          Done rest iObj
+              -> do yield $ IndObj iObj
+                    objectProducer rest

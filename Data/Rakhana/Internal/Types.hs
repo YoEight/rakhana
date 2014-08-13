@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.Internal.Types
@@ -13,6 +14,10 @@ module Data.Rakhana.Internal.Types where
 
 --------------------------------------------------------------------------------
 import Data.ByteString (ByteString)
+
+--------------------------------------------------------------------------------
+import Control.Monad.Catch (MonadThrow)
+import Pipes (Producer')
 
 --------------------------------------------------------------------------------
 data Number
@@ -35,6 +40,28 @@ data Object
     | Array [Object]
     | Bytes ByteString
     | Ref Int Int
-    | Stream Dictionary Object
+    | Stream Dictionary ByteString
     | Null
     deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
+data IndirectObject
+    = IndirectObject
+      { indObjectIndex      :: !Int
+      , indObjectGeneration :: !Int
+      , indObject           :: !Object
+      }
+      deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
+data Structure
+    = IndObj IndirectObject
+    | XRef
+    deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
+data Document
+    = Document
+      { documentVersion :: (Int, Int)
+      , documentObjects :: forall m. MonadThrow m => Producer' Structure m ()
+      }

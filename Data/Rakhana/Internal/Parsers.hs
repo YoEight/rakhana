@@ -224,7 +224,7 @@ parseObject = skipSpace >> go
          parseNumber
 
 --------------------------------------------------------------------------------
-parseIndirectObject :: Parser (Reference, Object)
+parseIndirectObject :: Parser IndirectObject
 parseIndirectObject
     = do skipSpace
          idx <- decimal
@@ -235,13 +235,23 @@ parseIndirectObject
          skipSpace
          skipComment
          obj <- parseObject
-         let ref = (idx, gen)
          case obj of
              Dict d ->
-                 let stream = parseTillStreamData >>
-                              return (ref, Stream d Null) in
-                 stream <|> (parseEndOfObject >> return (ref, obj))
-             _      -> parseEndOfObject >> return (ref, obj)
+                 let idobj  = makeIndObj idx gen (Stream d B.empty)
+                     iobj   = makeIndObj idx gen obj
+                     stream = idobj <$ parseTillStreamData in
+
+                 stream <|> (parseEndOfObject >> return iobj)
+             _      -> return $ makeIndObj idx gen obj
+
+--------------------------------------------------------------------------------
+makeIndObj :: Int -> Int -> Object -> IndirectObject
+makeIndObj idx gen obj
+    = IndirectObject
+      { indObjectIndex      = idx
+      , indObjectGeneration = gen
+      , indObject           = obj
+      }
 
 --------------------------------------------------------------------------------
 parseTillStreamData :: Parser ()
