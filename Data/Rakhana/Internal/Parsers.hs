@@ -14,7 +14,9 @@
 module Data.Rakhana.Internal.Parsers where
 
 --------------------------------------------------------------------------------
+import           Prelude hiding (take)
 import           Control.Applicative ((<$), (<|>), many)
+import           Control.Monad (MonadPlus, mzero)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
@@ -224,6 +226,18 @@ parseObject = skipSpace >> go
          parseNumber
 
 --------------------------------------------------------------------------------
+parseStreamBytes :: Int -> Parser ByteString
+parseStreamBytes len
+    = do skipSpace
+         _     <- string "stream"
+         bytes <- take len
+         skipSpace
+         _ <- string "endstream"
+         skipSpace
+         _ <- string "endobj"
+         return bytes
+
+--------------------------------------------------------------------------------
 parseIndirectObject :: Parser IndirectObject
 parseIndirectObject
     = do skipSpace
@@ -237,11 +251,14 @@ parseIndirectObject
          obj <- parseObject
          case obj of
              Dict d ->
-                 let idobj  = makeIndObj idx gen (Stream d B.empty)
-                     iobj   = makeIndObj idx gen obj
-                     stream = idobj <$ parseTillStreamData in
-
-                 stream <|> (parseEndOfObject >> return iobj)
+                 do let iobj = makeIndObj idx gen obj
+                        stream
+                            = do v   <- lookupM "Length" d
+                                 len <- natural v
+                                 bs  <- parseStreamBytes len
+                                 let idobj = makeIndObj idx gen (Stream d bs)
+                                 return idobj
+                    stream <|> (parseEndOfObject >> return iobj)
              _      -> return $ makeIndObj idx gen obj
 
 --------------------------------------------------------------------------------
@@ -284,3 +301,14 @@ parseEndOfObject
     = do skipSpace
          _ <- string "endobj"
          return ()
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
+lookupM :: MonadPlus m => ByteString -> Dictionary -> m Object
+lookupM k dict = maybe mzero return $ lookup k dict
+
+--------------------------------------------------------------------------------
+natural :: MonadPlus m => Object -> m Int
+natural (Number (Natural i)) = return i
+natural _                    = mzero
