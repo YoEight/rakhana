@@ -16,7 +16,7 @@ module Data.Rakhana.Internal.Parsers where
 --------------------------------------------------------------------------------
 import           Prelude hiding (take)
 import           Control.Applicative ((<$), (<|>), many)
-import           Control.Monad (MonadPlus, mzero)
+import           Control.Monad (MonadPlus, mzero, when)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
@@ -24,6 +24,7 @@ import           Data.Char (digitToInt, isDigit, isHexDigit)
 
 --------------------------------------------------------------------------------
 import Data.Attoparsec.ByteString.Lazy (Parser)
+import qualified Data.Attoparsec.ByteString as AB
 import Data.Attoparsec.ByteString.Char8 hiding (isDigit)
 import Data.Scientific (floatingOrInteger)
 
@@ -31,13 +32,24 @@ import Data.Scientific (floatingOrInteger)
 import Data.Rakhana.Internal.Types
 
 --------------------------------------------------------------------------------
-parseHeader :: Parser (Int, Int)
+parseHeader :: Parser Header
 parseHeader
     = do _   <- string "%PDF-"
          maj <- decimal
          _   <- char '.'
          min <- decimal
-         return (maj, min)
+         skipSpace
+         skipComment
+         --bin <- parseBinary -- <|> return False
+         return $ makeHeader maj min True -- bin
+  where
+    parseBinary
+        = do _  <- char '%'
+             bs <- take 12
+             --when (B.any (< 128) bs) $
+             --    fail "doesn't contain binary data"
+             -- endOfLine
+             return True
 
 --------------------------------------------------------------------------------
 startXRef :: Parser Int
@@ -60,6 +72,17 @@ tableXRef
          pdfEndOfLine
 
 --------------------------------------------------------------------------------
+parseXRef :: Parser Structure
+parseXRef
+    = do skipSpace
+         tableXRef
+         h  <- parseSubsectionHeader
+         es <- parseTableEntries
+         t  <- parseTrailerAfterTable
+         i  <- startXRef
+         return $ XRef $ makeXRefTable h es t i
+
+--------------------------------------------------------------------------------
 parseSubsectionHeader :: Parser (Int, Int)
 parseSubsectionHeader
     = do start <- decimal
@@ -71,23 +94,29 @@ parseSubsectionHeader
 --------------------------------------------------------------------------------
 parseTrailerAfterTable :: Parser Dictionary
 parseTrailerAfterTable
-    = do _ <- string "trailer"
+    = do skipSpace
+         _ <- string "trailer"
          pdfEndOfLine
          skipSpace
          Dict d <- parseDict
          return d
 
 --------------------------------------------------------------------------------
-parseTableEntry :: Parser (Int, Int, Bool)
+parseTableEntries :: Parser [TableEntry]
+parseTableEntries = many1 parseTableEntry
+
+--------------------------------------------------------------------------------
+parseTableEntry :: Parser TableEntry
 parseTableEntry
-    = do offset <- decimal
+    = do skipSpace
+         offset <- decimal
          skipSpace
          gen <- decimal
          skipSpace
          c <- anyChar
          case c of
-             'n' -> return (offset, gen, False)
-             'f' -> return (offset, gen, True)
+             'n' -> return $ makeTableEntry offset gen False
+             'f' -> return $ makeTableEntry offset gen True
              _   ->
                  let msg = "error parsing XRef table entry: unknown char: " ++
                            [c] in
@@ -238,7 +267,7 @@ parseStreamBytes len
          return bytes
 
 --------------------------------------------------------------------------------
-parseIndirectObject :: Parser IndirectObject
+parseIndirectObject :: Parser Structure
 parseIndirectObject
     = do skipSpace
          idx <- decimal
@@ -251,15 +280,16 @@ parseIndirectObject
          obj <- parseObject
          case obj of
              Dict d ->
-                 do let iobj = makeIndObj idx gen obj
+                 do let iobj = IndObj $ makeIndObj idx gen obj
                         stream
                             = do v   <- lookupM "Length" d
                                  len <- natural v
                                  bs  <- parseStreamBytes len
-                                 let idobj = makeIndObj idx gen (Stream d bs)
+                                 let idobj = IndObj $ makeIndObj idx gen
+                                             (Stream d bs)
                                  return idobj
                     stream <|> (parseEndOfObject >> return iobj)
-             _      -> return $ makeIndObj idx gen obj
+             _      -> return $ IndObj $ makeIndObj idx gen obj
 
 --------------------------------------------------------------------------------
 makeIndObj :: Int -> Int -> Object -> IndirectObject
@@ -268,6 +298,38 @@ makeIndObj idx gen obj
       { indObjectIndex      = idx
       , indObjectGeneration = gen
       , indObject           = obj
+      }
+
+--------------------------------------------------------------------------------
+makeXRefTable :: (Int, Int)
+              -> [TableEntry]
+              -> Dictionary
+              -> Int
+              -> XRefTable
+makeXRefTable header entries dict start
+    = XRefTable
+      { xrefHeader  = header
+      , xrefEntries = entries
+      , xrefTrailer = dict
+      , xrefStart   = start
+      }
+
+--------------------------------------------------------------------------------
+makeTableEntry :: Int -> Int -> Bool -> TableEntry
+makeTableEntry offset gen used
+    = TableEntry
+      { tableEntryOffset = offset
+      , tableEntryGeneration = gen
+      , tableEntryUsed       = used
+      }
+
+--------------------------------------------------------------------------------
+makeHeader :: Int -> Int -> Bool -> Header
+makeHeader mj mi b
+    = Header
+      { headerMaj    = mj
+      , headerMin    = mi
+      , headerBinary = b
       }
 
 --------------------------------------------------------------------------------

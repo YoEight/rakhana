@@ -54,14 +54,42 @@ data IndirectObject
       deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
+data TableEntry
+    = TableEntry
+      { tableEntryOffset     :: !Int
+      , tableEntryGeneration :: !Int
+      , tableEntryUsed       :: !Bool
+      }
+      deriving Show
+
+--------------------------------------------------------------------------------
+data XRefTable
+    = XRefTable
+      { xrefHeader  :: !(Int, Int)
+      , xrefEntries :: ![TableEntry]
+      , xrefTrailer :: !Dictionary
+      , xrefStart   :: !Int
+      }
+      deriving Show
+
+--------------------------------------------------------------------------------
+data Header
+    = Header
+      { headerMaj     :: !Int
+      , headerMin     :: !Int
+      , headerBinary  :: !Bool
+      }
+      deriving Show
+
+--------------------------------------------------------------------------------
 data Structure
     = IndObj IndirectObject
-    | XRef
-    deriving (Eq, Show)
+    | XRef XRefTable
+    deriving Show
 
 --------------------------------------------------------------------------------
 data Document
     = Document
-      { documentVersion :: (Int, Int)
+      { documentHeader  :: Header
       , documentObjects :: forall m. MonadThrow m => Producer' Structure m ()
       }
