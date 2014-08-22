@@ -53,6 +53,7 @@ data Req
     | Get Int
     | Direction Direction
     | Peek Int
+    | Discard Int
 
 --------------------------------------------------------------------------------
 data Resp
@@ -107,6 +108,7 @@ fileTape path
     dispatch s (Get i)       = tapeGet s i
     dispatch s (Direction o) = tapeDirection s o
     dispatch s (Peek i)      = tapePeek s i
+    dispatch s (Discard i)   = tapeDiscard s i
 
 --------------------------------------------------------------------------------
 tapeTop :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
@@ -190,6 +192,31 @@ tapePeek s i
              return (Binary b,s)
 
 --------------------------------------------------------------------------------
+tapeDiscard :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapeDiscard s i
+    = case o of
+          Forward  -> discardForward
+          Backward -> discardBackward
+  where
+    p = tapeStatePos s
+    h = tapeStateHandle s
+    o = tapeStateDirection s
+
+    discardForward
+        = liftIO $
+          do let p' = p + i
+                 s' = s { tapeStatePos = p' }
+             hSeek h AbsoluteSeek $ fromIntegral p'
+             return (Unit, s')
+
+    discardBackward
+        = liftIO $
+          do let p' = p - i
+                 s' = s { tapeStatePos = p' }
+             hSeek h SeekFromEnd $ fromIntegral p'
+             return (Unit, s')
+
+--------------------------------------------------------------------------------
 -- API
 --------------------------------------------------------------------------------
 driveSeek :: Monad m => Integer -> Drive m ()
@@ -221,7 +248,7 @@ drivePeek i
 
 --------------------------------------------------------------------------------
 driveDiscard :: Monad m => Int -> Drive m ()
-driveDiscard i = void $ driveGet i
+driveDiscard i = void $ request $ Discard i
 
 --------------------------------------------------------------------------------
 runDrive :: Monad m
