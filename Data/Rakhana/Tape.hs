@@ -18,7 +18,9 @@ module Data.Rakhana.Tape
     , Tape
     , driveBottom
     , driveDirection
+    , driveDiscard
     , driveGet
+    , drivePeek
     , driveSeek
     , driveTop
     , fileTape
@@ -53,6 +55,7 @@ data Req
     | Bottom
     | Get Int
     | Direction Direction
+    | Peek Int
 
 --------------------------------------------------------------------------------
 data Resp
@@ -102,6 +105,7 @@ fileTape path
     dispatch s (Seek i)      = tapeSeek s i
     dispatch s (Get i)       = tapeGet s i
     dispatch s (Direction o) = tapeDirection s o
+    dispatch s (Peek i)      = tapePeek s i
 
 --------------------------------------------------------------------------------
 tapeTop :: TapeState -> Server' Req Resp IO (Resp, TapeState)
@@ -137,16 +141,18 @@ tapeGet s i
     o = tapeStateDirection s
 
     getForward
-        = do let p' = p + i
+        = liftIO $
+          do let p' = p + i
                  s' = s { tapeStatePos = p' }
-             b <- liftIO $ L.hGet h i
+             b <- L.hGet h i
              return (Binary b, s')
 
     getBackward
-        = do let p' = p - i
+        = liftIO $
+          do let p' = p - i
                  s' = s { tapeStatePos = p' }
-             liftIO $ hSeek h SeekFromEnd $ fromIntegral p'
-             b <- liftIO $ L.hGet h i
+             hSeek h SeekFromEnd $ fromIntegral p'
+             b <- L.hGet h i
              return (Binary b, s')
 
 --------------------------------------------------------------------------------
@@ -155,6 +161,30 @@ tapeDirection s o
     = return (Unit, s')
   where
     s' = s { tapeStateDirection = o }
+
+--------------------------------------------------------------------------------
+tapePeek :: TapeState -> Int -> Server' Req Resp IO (Resp, TapeState)
+tapePeek s i
+    = case o of
+          Forward  -> peekForward
+          Backward -> peekBackward
+  where
+    p = tapeStatePos s
+    h = tapeStateHandle s
+    o = tapeStateDirection s
+
+    peekForward
+        = liftIO $
+          do bs <- L.hGet h i
+             hSeek h AbsoluteSeek $ fromIntegral p
+             return (Binary bs, s)
+
+    peekBackward
+        = liftIO $
+          do let p' = p - i
+             hSeek h SeekFromEnd $ fromIntegral p'
+             b <- L.hGet h i
+             return (Binary b,s)
 
 --------------------------------------------------------------------------------
 -- API
@@ -179,6 +209,16 @@ driveGet i
 --------------------------------------------------------------------------------
 driveDirection :: Direction -> Drive ()
 driveDirection d = void $ request $ Direction d
+
+--------------------------------------------------------------------------------
+drivePeek :: Int -> Drive L.ByteString
+drivePeek i
+    = do Binary b <- request $ Peek i
+         return b
+
+--------------------------------------------------------------------------------
+driveDiscard :: Int -> Drive ()
+driveDiscard i = void $ driveGet i
 
 --------------------------------------------------------------------------------
 runDrive :: Tape -> Drive a -> IO a

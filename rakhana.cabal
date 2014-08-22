@@ -54,6 +54,7 @@ library
   other-modules: Data.Rakhana.Internal.Parsers
                  Data.Rakhana.Internal.Types
                  Data.Rakhana.Tape
+                 Data.Rakhana.XRef
 
   -- LANGUAGE extensions used by modules in this package.
   other-extensions: OverloadedStrings

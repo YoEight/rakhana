@@ -15,7 +15,10 @@ module Data.Rakhana where
 
 --------------------------------------------------------------------------------
 import           Prelude hiding (null)
-import qualified Data.ByteString.Lazy as L
+import           Control.Monad (when)
+import qualified Data.ByteString.Lazy       as L
+import qualified Data.ByteString.Lazy.Char8 as L8
+import           Data.Char (isDigit)
 import           Data.Typeable
 
 --------------------------------------------------------------------------------
@@ -31,6 +34,7 @@ import Pipes.Core
 import Data.Rakhana.Internal.Parsers
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Tape
+import Data.Rakhana.XRef
 
 --------------------------------------------------------------------------------
 data RakhanaParserException
@@ -74,13 +78,5 @@ fooBytes input
           Fail rest _ e -> L.take 30 rest
 
 --------------------------------------------------------------------------------
-driveTest :: Drive ()
-driveTest
-    = do driveBottom
-         driveDirection Backward
-         bs <- driveGet 30
-         liftIO $ print bs
-
---------------------------------------------------------------------------------
-app :: IO ()
-app = runDrive (fileTape "samples/IdiomLite.pdf") driveTest
+app :: IO Integer
+app = runDrive (fileTape "samples/IdiomLite.pdf") getXRefPos
