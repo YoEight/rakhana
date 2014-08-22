@@ -37,11 +37,8 @@ import Pipes
 import Pipes.Core
 
 --------------------------------------------------------------------------------
-type Tape = forall r. Server' Req Resp IO r
-type Drive a = Client' Req Resp IO a
-
---------------------------------------------------------------------------------
-type TapeHandler = TapeState -> Req  -> Server' Req Resp IO (Resp, TapeState)
+type Tape m a  = Server' Req Resp m a
+type Drive m a = Client' Req Resp m a
 
 --------------------------------------------------------------------------------
 data Direction
@@ -82,7 +79,11 @@ initTapeState path h
       }
 
 --------------------------------------------------------------------------------
-tapeLoop :: TapeHandler -> TapeState -> Req -> Tape
+tapeLoop :: Monad m
+         => (TapeState -> Req -> Tape m (Resp, TapeState))
+         -> TapeState
+         -> Req
+         -> Tape m r
 tapeLoop k s rq
     = do (r, s') <- k s rq
          rq'     <- respond r
@@ -94,7 +95,7 @@ newTapeState path
     = fmap (initTapeState path) $ openBinaryFile path ReadMode
 
 --------------------------------------------------------------------------------
-fileTape :: FilePath -> Tape
+fileTape :: MonadIO m => FilePath -> Tape m r
 fileTape path
     = do s <- liftIO $ newTapeState path
          r <- respond Unit
@@ -108,29 +109,31 @@ fileTape path
     dispatch s (Peek i)      = tapePeek s i
 
 --------------------------------------------------------------------------------
-tapeTop :: TapeState -> Server' Req Resp IO (Resp, TapeState)
-tapeTop s = do liftIO $ hSeek h AbsoluteSeek 0
-               return (Unit, s)
+tapeTop :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeTop s
+    = do liftIO $ hSeek h AbsoluteSeek 0
+         return (Unit, s)
   where
     h = tapeStateHandle s
 
 --------------------------------------------------------------------------------
-tapeBottom :: TapeState -> Server' Req Resp IO (Resp, TapeState)
-tapeBottom s = do liftIO $ hSeek h SeekFromEnd 0
-                  return (Unit, s)
+tapeBottom :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeBottom s
+    = do liftIO $ hSeek h SeekFromEnd 0
+         return (Unit, s)
   where
     h = tapeStateHandle s
 
 --------------------------------------------------------------------------------
-tapeSeek :: TapeState -> Integer -> Server' Req Resp IO (Resp, TapeState)
-tapeSeek s i = do liftIO $ hSeek h AbsoluteSeek i
-
-                  return (Unit, s)
+tapeSeek :: MonadIO m => TapeState -> Integer -> Tape m (Resp, TapeState)
+tapeSeek s i
+    = do liftIO $ hSeek h AbsoluteSeek i
+         return (Unit, s)
   where
     h = tapeStateHandle s
 
 --------------------------------------------------------------------------------
-tapeGet :: TapeState -> Int -> Server' Req Resp IO (Resp, TapeState)
+tapeGet :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
 tapeGet s i
     = case o of
           Forward  -> getForward
@@ -156,14 +159,14 @@ tapeGet s i
              return (Binary b, s')
 
 --------------------------------------------------------------------------------
-tapeDirection :: TapeState -> Direction -> Server' Req Resp IO (Resp, TapeState)
+tapeDirection :: MonadIO m => TapeState -> Direction -> Tape m (Resp, TapeState)
 tapeDirection s o
     = return (Unit, s')
   where
     s' = s { tapeStateDirection = o }
 
 --------------------------------------------------------------------------------
-tapePeek :: TapeState -> Int -> Server' Req Resp IO (Resp, TapeState)
+tapePeek :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
 tapePeek s i
     = case o of
           Forward  -> peekForward
@@ -189,37 +192,40 @@ tapePeek s i
 --------------------------------------------------------------------------------
 -- API
 --------------------------------------------------------------------------------
-driveSeek :: Integer -> Drive ()
+driveSeek :: Monad m => Integer -> Drive m ()
 driveSeek i = void $ request $ Seek i
 
 --------------------------------------------------------------------------------
-driveTop :: Drive ()
+driveTop :: Monad m => Drive m ()
 driveTop = void $ request Top
 
 --------------------------------------------------------------------------------
-driveBottom :: Drive ()
+driveBottom :: Monad m => Drive m ()
 driveBottom = void $ request Bottom
 
 --------------------------------------------------------------------------------
-driveGet :: Int -> Drive L.ByteString
+driveGet :: Monad m => Int -> Drive m L.ByteString
 driveGet i
     = do Binary b <- request $ Get i
          return b
 
 --------------------------------------------------------------------------------
-driveDirection :: Direction -> Drive ()
+driveDirection :: Monad m => Direction -> Drive m ()
 driveDirection d = void $ request $ Direction d
 
 --------------------------------------------------------------------------------
-drivePeek :: Int -> Drive L.ByteString
+drivePeek :: Monad m => Int -> Drive m L.ByteString
 drivePeek i
     = do Binary b <- request $ Peek i
          return b
 
 --------------------------------------------------------------------------------
-driveDiscard :: Int -> Drive ()
+driveDiscard :: Monad m => Int -> Drive m ()
 driveDiscard i = void $ driveGet i
 
 --------------------------------------------------------------------------------
-runDrive :: Tape -> Drive a -> IO a
+runDrive :: Monad m
+         => (forall r. Tape m r)
+         -> Drive m a
+         -> m a
 runDrive tape drive = runEffect (tape >>~ const drive)

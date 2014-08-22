@@ -22,7 +22,7 @@ import           Data.Char (isDigit)
 import Data.Rakhana.Tape
 
 --------------------------------------------------------------------------------
-getXRefPos :: Drive Integer
+getXRefPos :: Monad m => Drive m Integer
 getXRefPos
     = do driveBottom
          driveDirection Backward
@@ -35,19 +35,19 @@ getXRefPos
          return p
 
 --------------------------------------------------------------------------------
-skipEOL :: Drive ()
+skipEOL :: Monad m => Drive m ()
 skipEOL
     = do c <- drivePeek 1
          when (c == "\n") (driveDiscard 1 >> skipEOL)
 
 --------------------------------------------------------------------------------
-parseEOF :: Drive ()
+parseEOF :: Monad m => Drive m ()
 parseEOF
     = do "%%EOF" <- driveGet 5
          return ()
 
 --------------------------------------------------------------------------------
-parseXRefPosInteger :: Drive Integer
+parseXRefPosInteger :: Monad m => Drive m Integer
 parseXRefPosInteger = go []
   where
     go cs = do bs <- drivePeek 1
@@ -58,7 +58,7 @@ parseXRefPosInteger = go []
                    _ -> return $ read cs
 
 --------------------------------------------------------------------------------
-parseStartXRef :: Drive ()
+parseStartXRef :: Monad m => Drive m ()
 parseStartXRef
     = do "startxref" <- driveGet 9
          return ()
