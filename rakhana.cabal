@@ -68,6 +68,7 @@ library
                      , mtl
                      , pipes      == 4.*
                      , scientific
+                     , pipes-safe > 2 && < 3
 
 
   -- Directories containing source files.

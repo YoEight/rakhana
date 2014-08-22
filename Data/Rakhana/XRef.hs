@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings  #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.XRef
@@ -16,13 +17,26 @@ module Data.Rakhana.XRef (getXRefPos) where
 import           Control.Monad (when)
 import qualified Data.ByteString.Lazy       as L
 import qualified Data.ByteString.Lazy.Char8 as L8
-import           Data.Char (isDigit)
+import           Data.Char (isDigit, isSpace)
+import           Data.Typeable
+
+--------------------------------------------------------------------------------
+import Control.Monad.Catch (Exception, MonadThrow(..))
+import Pipes.Safe ()
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Tape
 
 --------------------------------------------------------------------------------
-getXRefPos :: Monad m => Drive m Integer
+data XRefParsingException
+    = XRefParsingException String
+    deriving (Show, Typeable)
+
+--------------------------------------------------------------------------------
+instance Exception XRefParsingException
+
+--------------------------------------------------------------------------------
+getXRefPos :: MonadThrow m => Drive m Integer
 getXRefPos
     = do driveBottom
          driveDirection Backward
@@ -37,17 +51,23 @@ getXRefPos
 --------------------------------------------------------------------------------
 skipEOL :: Monad m => Drive m ()
 skipEOL
-    = do c <- drivePeek 1
-         when (c == "\n") (driveDiscard 1 >> skipEOL)
+    = do bs <- drivePeek 1
+         case L8.uncons bs of
+             Just (c, _)
+                 | isSpace c -> driveDiscard 1 >> skipEOL
+                 | otherwise -> return ()
+             _ -> return ()
 
 --------------------------------------------------------------------------------
-parseEOF :: Monad m => Drive m ()
+parseEOF :: MonadThrow m => Drive m ()
 parseEOF
-    = do "%%EOF" <- driveGet 5
-         return ()
+    = do bs <- driveGet 5
+         case bs of
+             "%%EOF" -> return ()
+             _       -> throwM $ XRefParsingException "Expected %%EOF"
 
 --------------------------------------------------------------------------------
-parseXRefPosInteger :: Monad m => Drive m Integer
+parseXRefPosInteger :: MonadThrow m => Drive m Integer
 parseXRefPosInteger = go []
   where
     go cs = do bs <- drivePeek 1
@@ -57,8 +77,13 @@ parseXRefPosInteger = go []
                        | otherwise -> return $ read cs
                    _ -> return $ read cs
 
+    end [] = throwM $ XRefParsingException "Invalid XRef position integer"
+    end cs = return $ read cs
+
 --------------------------------------------------------------------------------
-parseStartXRef :: Monad m => Drive m ()
+parseStartXRef :: MonadThrow m => Drive m ()
 parseStartXRef
-    = do "startxref" <- driveGet 9
-         return ()
+    = do bs <- driveGet 9
+         case bs of
+             "startxref" -> return ()
+             _           -> throwM $ XRefParsingException "Expected startxref"
