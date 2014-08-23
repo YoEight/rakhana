@@ -17,7 +17,8 @@ module Data.Rakhana.Tape
     , Resp
     , Tape
     , driveBottom
-    , driveDirection
+    , driveBackward
+    , driveForward
     , driveDiscard
     , driveGet
     , drivePeek
@@ -28,7 +29,7 @@ module Data.Rakhana.Tape
     ) where
 
 --------------------------------------------------------------------------------
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString as B
 import           Data.Functor (void)
 import           System.IO
 
@@ -58,7 +59,7 @@ data Req
 --------------------------------------------------------------------------------
 data Resp
     = Unit
-    | Binary L.ByteString
+    | Binary B.ByteString
 
 --------------------------------------------------------------------------------
 data TapeState
@@ -114,7 +115,7 @@ fileTape path
 tapeTop :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
 tapeTop s
     = do liftIO $ hSeek h AbsoluteSeek 0
-         return (Unit, s)
+         return (Unit, s { tapeStatePos = 0 })
   where
     h = tapeStateHandle s
 
@@ -122,7 +123,7 @@ tapeTop s
 tapeBottom :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
 tapeBottom s
     = do liftIO $ hSeek h SeekFromEnd 0
-         return (Unit, s)
+         return (Unit, s { tapeStatePos = 0 })
   where
     h = tapeStateHandle s
 
@@ -149,7 +150,7 @@ tapeGet s i
         = liftIO $
           do let p' = p + i
                  s' = s { tapeStatePos = p' }
-             b <- L.hGet h i
+             b <- B.hGet h i
              return (Binary b, s')
 
     getBackward
@@ -157,7 +158,7 @@ tapeGet s i
           do let p' = p - i
                  s' = s { tapeStatePos = p' }
              hSeek h SeekFromEnd $ fromIntegral p'
-             b <- L.hGet h i
+             b <- B.hGet h i
              return (Binary b, s')
 
 --------------------------------------------------------------------------------
@@ -180,7 +181,7 @@ tapePeek s i
 
     peekForward
         = liftIO $
-          do bs <- L.hGet h i
+          do bs <- B.hGet h i
              hSeek h AbsoluteSeek $ fromIntegral p
              return (Binary bs, s)
 
@@ -188,7 +189,7 @@ tapePeek s i
         = liftIO $
           do let p' = p - i
              hSeek h SeekFromEnd $ fromIntegral p'
-             b <- L.hGet h i
+             b <- B.hGet h i
              return (Binary b,s)
 
 --------------------------------------------------------------------------------
@@ -231,7 +232,7 @@ driveBottom :: Monad m => Drive m ()
 driveBottom = void $ request Bottom
 
 --------------------------------------------------------------------------------
-driveGet :: Monad m => Int -> Drive m L.ByteString
+driveGet :: Monad m => Int -> Drive m B.ByteString
 driveGet i
     = do Binary b <- request $ Get i
          return b
@@ -241,7 +242,15 @@ driveDirection :: Monad m => Direction -> Drive m ()
 driveDirection d = void $ request $ Direction d
 
 --------------------------------------------------------------------------------
-drivePeek :: Monad m => Int -> Drive m L.ByteString
+driveForward :: Monad m => Drive m ()
+driveForward = driveDirection Forward
+
+--------------------------------------------------------------------------------
+driveBackward :: Monad m => Drive m ()
+driveBackward = driveDirection Backward
+
+--------------------------------------------------------------------------------
+drivePeek :: Monad m => Int -> Drive m B.ByteString
 drivePeek i
     = do Binary b <- request $ Peek i
          return b

@@ -58,38 +58,23 @@ data TableEntry
     = TableEntry
       { tableEntryOffset     :: !Int
       , tableEntryGeneration :: !Int
-      , tableEntryUsed       :: !Bool
+      , tableEntryFree       :: !Bool
       }
       deriving Show
 
 --------------------------------------------------------------------------------
-data XRefTable
-    = XRefTable
+data XRef
+    = XRef
       { xrefHeader  :: !(Int, Int)
       , xrefEntries :: ![TableEntry]
       , xrefTrailer :: !Dictionary
-      , xrefStart   :: !Int
       }
       deriving Show
 
 --------------------------------------------------------------------------------
 data Header
     = Header
-      { headerMaj     :: !Int
-      , headerMin     :: !Int
-      , headerBinary  :: !Bool
+      { headerMaj :: !Int
+      , headerMin :: !Int
       }
       deriving Show
-
---------------------------------------------------------------------------------
-data Structure
-    = IndObj IndirectObject
-    | XRef XRefTable
-    deriving Show
-
---------------------------------------------------------------------------------
-data Document
-    = Document
-      { documentHeader  :: Header
-      , documentObjects :: forall m. MonadThrow m => Producer' Structure m ()
-      }

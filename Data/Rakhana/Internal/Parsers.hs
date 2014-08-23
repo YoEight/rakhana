@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE OverloadedStrings #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.Internal.Parsers
@@ -23,7 +23,7 @@ import qualified Data.ByteString.Char8 as B8
 import           Data.Char (digitToInt, isDigit, isHexDigit)
 
 --------------------------------------------------------------------------------
-import Data.Attoparsec.ByteString.Lazy (Parser)
+import Data.Attoparsec.ByteString (Parser)
 import qualified Data.Attoparsec.ByteString as AB
 import Data.Attoparsec.ByteString.Char8 hiding (isDigit)
 import Data.Scientific (floatingOrInteger)
@@ -38,18 +38,7 @@ parseHeader
          maj <- decimal
          _   <- char '.'
          min <- decimal
-         skipSpace
-         skipComment
-         --bin <- parseBinary -- <|> return False
-         return $ makeHeader maj min True -- bin
-  where
-    parseBinary
-        = do _  <- char '%'
-             bs <- take 12
-             --when (B.any (< 128) bs) $
-             --    fail "doesn't contain binary data"
-             -- endOfLine
-             return True
+         return $ makeHeader maj min
 
 --------------------------------------------------------------------------------
 startXRef :: Parser Int
@@ -72,15 +61,14 @@ tableXRef
          pdfEndOfLine
 
 --------------------------------------------------------------------------------
-parseXRef :: Parser Structure
+parseXRef :: Parser XRef
 parseXRef
     = do skipSpace
          tableXRef
          h  <- parseSubsectionHeader
          es <- parseTableEntries
          t  <- parseTrailerAfterTable
-         i  <- startXRef
-         return $ XRef $ makeXRefTable h es t i
+         return $ makeXRef h es t
 
 --------------------------------------------------------------------------------
 parseSubsectionHeader :: Parser (Int, Int)
@@ -267,7 +255,7 @@ parseStreamBytes len
          return bytes
 
 --------------------------------------------------------------------------------
-parseIndirectObject :: Parser Structure
+parseIndirectObject :: Parser IndirectObject
 parseIndirectObject
     = do skipSpace
          idx <- decimal
@@ -280,16 +268,16 @@ parseIndirectObject
          obj <- parseObject
          case obj of
              Dict d ->
-                 do let iobj = IndObj $ makeIndObj idx gen obj
+                 do let iobj = makeIndObj idx gen obj
                         stream
                             = do v   <- lookupM "Length" d
                                  len <- natural v
                                  bs  <- parseStreamBytes len
-                                 let idobj = IndObj $ makeIndObj idx gen
+                                 let idobj = makeIndObj idx gen
                                              (Stream d bs)
                                  return idobj
                     stream <|> (parseEndOfObject >> return iobj)
-             _      -> return $ IndObj $ makeIndObj idx gen obj
+             _      -> return $ makeIndObj idx gen obj
 
 --------------------------------------------------------------------------------
 makeIndObj :: Int -> Int -> Object -> IndirectObject
@@ -301,35 +289,32 @@ makeIndObj idx gen obj
       }
 
 --------------------------------------------------------------------------------
-makeXRefTable :: (Int, Int)
-              -> [TableEntry]
-              -> Dictionary
-              -> Int
-              -> XRefTable
-makeXRefTable header entries dict start
-    = XRefTable
+makeXRef :: (Int, Int)
+         -> [TableEntry]
+         -> Dictionary
+         -> XRef
+makeXRef header entries dict
+    = XRef
       { xrefHeader  = header
       , xrefEntries = entries
       , xrefTrailer = dict
-      , xrefStart   = start
       }
 
 --------------------------------------------------------------------------------
 makeTableEntry :: Int -> Int -> Bool -> TableEntry
-makeTableEntry offset gen used
+makeTableEntry offset gen free
     = TableEntry
       { tableEntryOffset = offset
       , tableEntryGeneration = gen
-      , tableEntryUsed       = used
+      , tableEntryFree       = free
       }
 
 --------------------------------------------------------------------------------
-makeHeader :: Int -> Int -> Bool -> Header
-makeHeader mj mi b
+makeHeader :: Int -> Int -> Header
+makeHeader mj mi
     = Header
       { headerMaj    = mj
       , headerMin    = mi
-      , headerBinary = b
       }
 
 --------------------------------------------------------------------------------

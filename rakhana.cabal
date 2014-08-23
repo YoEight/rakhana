@@ -53,6 +53,7 @@ library
   -- Modules included in this library but not exported.
   other-modules: Data.Rakhana.Internal.Parsers
                  Data.Rakhana.Internal.Types
+                 Data.Rakhana.Nursery
                  Data.Rakhana.Tape
                  Data.Rakhana.XRef
 
