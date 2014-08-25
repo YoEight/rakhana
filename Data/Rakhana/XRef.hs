@@ -33,6 +33,7 @@ import Pipes.Safe ()
 import Data.Rakhana.Internal.Parsers
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Tape
+import Data.Rakhana.Util.Drive
 
 --------------------------------------------------------------------------------
 data XRefParsingException
@@ -65,18 +66,8 @@ getXRef pos
     = do driveTop
          driveForward
          driveSeek pos
-         bs <- driveGet bufferSize
-         case parse parseXRef bs of
-             Fail _ _ e -> throwM $ XRefParsingException e
-             Partial k  -> loop k
-             Done _ i   -> return i
-  where
-    loop k
-        = do bs <- driveGet bufferSize
-             case k bs of
-                 Fail _ _ e -> throwM $ XRefParsingException e
-                 Partial k' -> loop k'
-                 Done _ i   -> return i
+         eR <- parseRepeatedly bufferSize parseXRef
+         either (throwM . XRefParsingException) return eR
 
 --------------------------------------------------------------------------------
 skipEOL :: Monad m => Drive m ()

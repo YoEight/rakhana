@@ -16,20 +16,24 @@ module Data.Rakhana.Internal.Parsers where
 --------------------------------------------------------------------------------
 import           Prelude hiding (take)
 import           Control.Applicative ((<$), (<|>), many)
-import           Control.Monad (MonadPlus, mzero, when)
+import           Control.Monad (when)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
 import           Data.Char (digitToInt, isDigit, isHexDigit)
+import           Data.Map (Map, fromList, lookup)
+import qualified Data.Vector           as V
 
 --------------------------------------------------------------------------------
-import Data.Attoparsec.ByteString (Parser)
+import           Data.Array
+import           Data.Attoparsec.ByteString (Parser)
 import qualified Data.Attoparsec.ByteString as AB
-import Data.Attoparsec.ByteString.Char8 hiding (isDigit)
-import Data.Scientific (floatingOrInteger)
+import           Data.Attoparsec.ByteString.Char8 hiding (isDigit)
+import           Data.Scientific (floatingOrInteger)
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Types
+import Data.Rakhana.Util.Dictionary
 
 --------------------------------------------------------------------------------
 parseHeader :: Parser Header
@@ -65,10 +69,10 @@ parseXRef :: Parser XRef
 parseXRef
     = do skipSpace
          tableXRef
-         h  <- parseSubsectionHeader
-         es <- parseTableEntries
-         t  <- parseTrailerAfterTable
-         return $ makeXRef h es t
+         h@(s,_) <- parseSubsectionHeader
+         es      <- parseTableEntries s
+         t       <- parseTrailerAfterTable
+         return $ makeXRef h (fromList es) t
 
 --------------------------------------------------------------------------------
 parseSubsectionHeader :: Parser (Int, Int)
@@ -90,8 +94,18 @@ parseTrailerAfterTable
          return d
 
 --------------------------------------------------------------------------------
-parseTableEntries :: Parser [TableEntry]
-parseTableEntries = many1 parseTableEntry
+parseTableEntries :: Int -> Parser [(Reference, TableEntry)]
+parseTableEntries start
+    = loop start
+  where
+    loop i
+        = do mT <- optional parseTableEntry
+             case mT of
+                 Nothing -> return []
+                 Just t
+                     -> let gen = tableEntryGeneration t
+                            ref = (i,gen) in
+                        fmap ((ref,t):) $ loop (i+1)
 
 --------------------------------------------------------------------------------
 parseTableEntry :: Parser TableEntry
@@ -117,7 +131,7 @@ parseDict
          dict <- many parseKey
          skipSpace
          _ <- string ">>"
-         return $ Dict dict
+         return $ Dict $ fromList dict
 
 --------------------------------------------------------------------------------
 parseKey :: Parser (ByteString, Object)
@@ -217,7 +231,7 @@ parseArray
          a <- many parseObject
          skipSpace
          _ <- char ']'
-         return $ Array a
+         return $ Array $ V.fromList a
 
 --------------------------------------------------------------------------------
 parseRef :: Parser Object
@@ -270,9 +284,9 @@ parseIndirectObject
              Dict d ->
                  do let iobj = makeIndObj idx gen obj
                         stream
-                            = do v   <- lookupM "Length" d
+                            = do v   <- getDictValue "Length" d
                                  len <- natural v
-                                 bs  <- parseStreamBytes len
+                                 bs  <- parseStreamBytes $ fromIntegral len
                                  let idobj = makeIndObj idx gen
                                              (Stream d bs)
                                  return idobj
@@ -290,7 +304,7 @@ makeIndObj idx gen obj
 
 --------------------------------------------------------------------------------
 makeXRef :: (Int, Int)
-         -> [TableEntry]
+         -> Map Reference TableEntry
          -> Dictionary
          -> XRef
 makeXRef header entries dict
@@ -301,7 +315,7 @@ makeXRef header entries dict
       }
 
 --------------------------------------------------------------------------------
-makeTableEntry :: Int -> Int -> Bool -> TableEntry
+makeTableEntry :: Integer -> Int -> Bool -> TableEntry
 makeTableEntry offset gen free
     = TableEntry
       { tableEntryOffset = offset
@@ -352,10 +366,10 @@ parseEndOfObject
 --------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
-lookupM :: MonadPlus m => ByteString -> Dictionary -> m Object
-lookupM k dict = maybe mzero return $ lookup k dict
+natural :: Monad m => Object -> m Integer
+natural (Number (Natural i)) = return i
+natural _                    = fail "natural"
 
 --------------------------------------------------------------------------------
-natural :: MonadPlus m => Object -> m Int
-natural (Number (Natural i)) = return i
-natural _                    = mzero
+optional :: Parser a -> Parser (Maybe a)
+optional p = fmap Just p <|> return Nothing

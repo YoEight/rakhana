@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- |
--- Module : Data.Rakhana
+-- Module : Data.Rakhana.Util.Dictionary
 -- Copyright : (C) 2014 Yorick Laupa
 -- License : (see the file LICENSE)
 --
@@ -9,24 +9,17 @@
 -- Portability : non-portable
 --
 --------------------------------------------------------------------------------
-module Data.Rakhana where
+module Data.Rakhana.Util.Dictionary where
 
 --------------------------------------------------------------------------------
-import Control.Monad.Trans
+import Prelude hiding (lookup)
+import Control.Monad (MonadPlus, mzero)
+import Data.ByteString (ByteString)
+import Data.Map (lookup)
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Types
-import Data.Rakhana.Tape
-import Data.Rakhana.Nursery
-import Pipes
 
 --------------------------------------------------------------------------------
-user :: MonadIO m => Playground m ()
-user = do doc  <- nurseryGetDocument
-          info <- nurseryGetInfo
-
-          liftIO $ print doc
-          liftIO $ print info
-
-app :: IO ()
-app = runDrive (fileTape "samples/IdiomLite.pdf") (withNursery user)
+getDictValue :: MonadPlus m => ByteString -> Dictionary -> m Object
+getDictValue k dict = maybe mzero return $ lookup k dict
