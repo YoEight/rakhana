@@ -17,6 +17,7 @@ module Data.Rakhana.Nursery
     , Playground
     , nurseryGetDocument
     , nurseryGetInfo
+    , nurseryResolve
     , withNursery
     ) where
 
@@ -63,12 +64,14 @@ type Pages = Dictionary
 data NReq
     = RqDoc
     | RqInfo
+    | RqResolve Reference
 
 --------------------------------------------------------------------------------
 data NResp
     = Unit
     | RDoc Document
     | RInfo Dictionary
+    | RResolve Object
 
 --------------------------------------------------------------------------------
 instance Exception NurseryException
@@ -116,8 +119,9 @@ nursery
          rq <- respond Unit
          nurseryLoop dispatch initState rq
   where
-    dispatch s RqDoc  = serveDoc s
-    dispatch s RqInfo = serveInfo s
+    dispatch s RqDoc           = serveDoc s
+    dispatch s RqInfo          = serveInfo s
+    dispatch s (RqResolve ref) = serveResolve s ref
 
 --------------------------------------------------------------------------------
 serveDoc :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
@@ -130,6 +134,17 @@ serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
 serveInfo s = return (RInfo info, s)
   where
     info = nurseryInfo s
+
+--------------------------------------------------------------------------------
+serveResolve :: MonadThrow m
+             => NurseryState
+             -> Reference
+             -> Nursery m (NResp, NurseryState)
+serveResolve s ref
+    = do obj <- resolveObject xref ref
+         return (RResolve obj, s)
+  where
+    xref = nurseryXRef s
 
 --------------------------------------------------------------------------------
 getHeader :: MonadThrow m => Nursery m Header
@@ -256,3 +271,9 @@ nurseryGetInfo :: Monad m => Playground m Dictionary
 nurseryGetInfo
     = do RInfo info <- request RqInfo
          return info
+
+--------------------------------------------------------------------------------
+nurseryResolve :: Monad m => Reference -> Playground m Object
+nurseryResolve ref
+    = do RResolve obj <- request $ RqResolve ref
+         return obj
