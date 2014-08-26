@@ -15,6 +15,7 @@
 module Data.Rakhana.Nursery
     ( Playground
     , nurseryGetInfo
+    , nurseryGetHeader
     , nurseryGetPages
     , nurseryResolve
     , withNursery
@@ -61,6 +62,7 @@ type Pages = Dictionary
 --------------------------------------------------------------------------------
 data NReq
     = RqInfo
+    | RqHeader
     | RqPages
     | RqResolve Reference
 
@@ -68,6 +70,7 @@ data NReq
 data NResp
     = Unit
     | RInfo Dictionary
+    | RHeader Header
     | RPages Dictionary
     | RResolve Object
 
@@ -77,10 +80,11 @@ instance Exception NurseryException
 --------------------------------------------------------------------------------
 data NurseryState
     = NurseryState
-      { nurseryXRef  :: !XRef
-      , nurseryRoot  :: !Dictionary
-      , nurseryInfo  :: !Dictionary
-      , nurseryPages :: !Dictionary
+      { nurseryHeader :: !Header
+      , nurseryXRef   :: !XRef
+      , nurseryRoot   :: !Dictionary
+      , nurseryInfo   :: !Dictionary
+      , nurseryPages  :: !Dictionary
       }
 
 --------------------------------------------------------------------------------
@@ -97,10 +101,11 @@ nursery
          root  <- getRoot xref
          pages <- getPages xref root
          let initState = NurseryState
-                         { nurseryXRef  = xref
-                         , nurseryRoot  = root
-                         , nurseryInfo  = info
-                         , nurseryPages = pages
+                         { nurseryHeader = h
+                         , nurseryXRef   = xref
+                         , nurseryRoot   = root
+                         , nurseryInfo   = info
+                         , nurseryPages  = pages
                          }
          rq <- respond Unit
          nurseryLoop dispatch initState rq
@@ -108,12 +113,19 @@ nursery
     dispatch s RqInfo          = serveInfo s
     dispatch s RqPages         = servePages s
     dispatch s (RqResolve ref) = serveResolve s ref
+    dispatch s RqHeader        = serveHeader s
 
 --------------------------------------------------------------------------------
 serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
 serveInfo s = return (RInfo info, s)
   where
     info = nurseryInfo s
+
+--------------------------------------------------------------------------------
+serveHeader :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
+serveHeader s = return (RHeader header, s)
+  where
+    header = nurseryHeader s
 
 --------------------------------------------------------------------------------
 servePages :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
@@ -237,6 +249,12 @@ nurseryGetInfo :: Monad m => Playground m Dictionary
 nurseryGetInfo
     = do RInfo info <- request RqInfo
          return info
+
+--------------------------------------------------------------------------------
+nurseryGetHeader :: Monad m => Playground m Header
+nurseryGetHeader
+    = do RHeader header <- request RqHeader
+         return header
 
 --------------------------------------------------------------------------------
 nurseryGetPages :: Monad m => Playground m Dictionary
