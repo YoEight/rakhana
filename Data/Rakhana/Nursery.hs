@@ -13,9 +13,7 @@
 --
 --------------------------------------------------------------------------------
 module Data.Rakhana.Nursery
-    ( Document
-    , Playground
-    , nurseryGetDocument
+    ( Playground
     , nurseryGetInfo
     , nurseryGetPages
     , nurseryResolve
@@ -52,7 +50,6 @@ data NurseryException
     | NurseryUnresolvedObject Int Int
     | NurseryRootNotFound
     | NurseryPagesNotFound
-    | NurseryInvalidDocument
     deriving (Show, Typeable)
 
 --------------------------------------------------------------------------------
@@ -63,15 +60,13 @@ type Pages = Dictionary
 
 --------------------------------------------------------------------------------
 data NReq
-    = RqDoc
-    | RqInfo
+    = RqInfo
     | RqPages
     | RqResolve Reference
 
 --------------------------------------------------------------------------------
 data NResp
     = Unit
-    | RDoc Document
     | RInfo Dictionary
     | RPages Dictionary
     | RResolve Object
@@ -86,17 +81,7 @@ data NurseryState
       , nurseryRoot  :: !Dictionary
       , nurseryInfo  :: !Dictionary
       , nurseryPages :: !Dictionary
-      , nurseryDoc   :: !Document
       }
-
---------------------------------------------------------------------------------
-data Document
-    = Document
-      { docPageCount :: !Integer
-      , docWidth     :: !Integer
-      , docHeight    :: !Integer
-      }
-      deriving Show
 
 --------------------------------------------------------------------------------
 bufferSize :: Int
@@ -111,27 +96,18 @@ nursery
          info  <- getInfo xref
          root  <- getRoot xref
          pages <- getPages xref root
-         doc   <- getDocument pages
          let initState = NurseryState
                          { nurseryXRef  = xref
                          , nurseryRoot  = root
                          , nurseryInfo  = info
                          , nurseryPages = pages
-                         , nurseryDoc   = doc
                          }
          rq <- respond Unit
          nurseryLoop dispatch initState rq
   where
-    dispatch s RqDoc           = serveDoc s
     dispatch s RqInfo          = serveInfo s
     dispatch s RqPages         = servePages s
     dispatch s (RqResolve ref) = serveResolve s ref
-
---------------------------------------------------------------------------------
-serveDoc :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
-serveDoc s = return (RDoc doc, s)
-  where
-    doc = nurseryDoc s
 
 --------------------------------------------------------------------------------
 serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
@@ -206,29 +182,6 @@ getPages xref root
           . _Dict
 
 --------------------------------------------------------------------------------
-getDocument :: MonadThrow m => Pages -> m Document
-getDocument pages
-    = case mDoc of
-          Nothing -> throwM NurseryInvalidDocument
-          Just d  -> return d
-  where
-    count = pages ^? dictKey "Count" . _Number . _Natural
-
-    width = pages ^? dictKey "MediaBox"
-                  . _Array
-                  . nth 2
-                  . _Number
-                  . _Natural
-
-    height = pages ^? dictKey "MediaBox"
-                   . _Array
-                   . nth 3
-                   . _Number
-                   . _Natural
-
-    mDoc = Document <$> count <*> width <*> height
-
---------------------------------------------------------------------------------
 resolveObject :: MonadThrow m => XRef -> Reference -> Nursery m Object
 resolveObject xref ref@(idx,gen)
     = do driveTop
@@ -279,12 +232,6 @@ nurseryLoop k s rq
 
 --------------------------------------------------------------------------------
 -- API
---------------------------------------------------------------------------------
-nurseryGetDocument :: Monad m => Playground m Document
-nurseryGetDocument
-    = do RDoc doc <- request RqDoc
-         return doc
-
 --------------------------------------------------------------------------------
 nurseryGetInfo :: Monad m => Playground m Dictionary
 nurseryGetInfo
