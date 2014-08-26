@@ -13,6 +13,9 @@
 module Data.Rakhana.Util.Drive where
 
 --------------------------------------------------------------------------------
+import qualified Data.ByteString as B
+
+--------------------------------------------------------------------------------
 import Data.Attoparsec.ByteString
 
 --------------------------------------------------------------------------------
@@ -25,11 +28,15 @@ parseRepeatedly bufferSize parser
          case parse parser bs of
              Fail _ _ e -> return $ Left e
              Partial k  -> loop k
-             Done _ a   -> return $ Right a
+             Done r a   -> do let len = fromIntegral $ B.length r
+                              driveModifySeek (\i -> i - len)
+                              return $ Right a
   where
     loop k
         = do bs <- driveGet bufferSize
              case k bs of
                  Fail _ _ e -> return $ Left e
                  Partial k' -> loop k'
-                 Done _ i   -> return $ Right i
+                 Done r a   -> do let len = fromIntegral $ B.length r
+                                  driveModifySeek (\i -> i - len)
+                                  return $ Right a

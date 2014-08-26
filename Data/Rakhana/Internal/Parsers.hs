@@ -257,19 +257,15 @@ parseObject = skipSpace >> go
          parseNumber
 
 --------------------------------------------------------------------------------
-parseStreamBytes :: Int -> Parser ByteString
-parseStreamBytes len
+parseStreamHeader :: Parser ()
+parseStreamHeader
     = do skipSpace
          _     <- string "stream"
-         bytes <- take len
          skipSpace
-         _ <- string "endstream"
-         skipSpace
-         _ <- string "endobj"
-         return bytes
+         return ()
 
 --------------------------------------------------------------------------------
-parseIndirectObject :: Parser IndirectObject
+parseIndirectObject :: Parser Object
 parseIndirectObject
     = do skipSpace
          idx <- decimal
@@ -279,28 +275,7 @@ parseIndirectObject
          _   <- string "obj"
          skipSpace
          skipComment
-         obj <- parseObject
-         case obj of
-             Dict d ->
-                 do let iobj = makeIndObj idx gen obj
-                        stream
-                            = do v   <- getDictValue "Length" d
-                                 len <- natural v
-                                 bs  <- parseStreamBytes $ fromIntegral len
-                                 let idobj = makeIndObj idx gen
-                                             (Stream d bs)
-                                 return idobj
-                    stream <|> (parseEndOfObject >> return iobj)
-             _      -> return $ makeIndObj idx gen obj
-
---------------------------------------------------------------------------------
-makeIndObj :: Int -> Int -> Object -> IndirectObject
-makeIndObj idx gen obj
-    = IndirectObject
-      { indObjectIndex      = idx
-      , indObjectGeneration = gen
-      , indObject           = obj
-      }
+         parseObject
 
 --------------------------------------------------------------------------------
 makeXRef :: (Int, Int)

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana
@@ -12,6 +13,7 @@
 module Data.Rakhana where
 
 --------------------------------------------------------------------------------
+import Control.Lens
 import Control.Monad.Trans
 
 --------------------------------------------------------------------------------
@@ -22,11 +24,14 @@ import Pipes
 
 --------------------------------------------------------------------------------
 user :: MonadIO m => Playground m ()
-user = do doc  <- nurseryGetDocument
-          info <- nurseryGetInfo
+user = do doc   <- nurseryGetDocument
+          info  <- nurseryGetInfo
+          pages <- nurseryGetPages
 
-          liftIO $ print doc
-          liftIO $ print info
+          obj  <- nurseryResolve (4,0)
+          --mCreatorRef <- info ^!? dictKey "Producer" . _Ref
+          --mCreator    <- traverse nurseryResolve mCreatorRef
+          liftIO $ print obj
 
 app :: IO ()
 app = runDrive (fileTape "samples/IdiomLite.pdf") (withNursery user)

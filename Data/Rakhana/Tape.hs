@@ -19,8 +19,10 @@ module Data.Rakhana.Tape
     , driveBottom
     , driveBackward
     , driveForward
+    , driveGetSeek
     , driveDiscard
     , driveGet
+    , driveModifySeek
     , drivePeek
     , driveSeek
     , driveTop
@@ -49,6 +51,7 @@ data Direction
 --------------------------------------------------------------------------------
 data Req
     = Seek Integer
+    | GetSeek
     | Top
     | Bottom
     | Get Int
@@ -60,12 +63,13 @@ data Req
 data Resp
     = Unit
     | Binary B.ByteString
+    | RSeek Integer
 
 --------------------------------------------------------------------------------
 data TapeState
     = TapeState
       { tapeStateDirection :: !Direction
-      , tapeStatePos       :: !Int
+      , tapeStatePos       :: !Integer
       , tapeStateFilePath  :: !FilePath
       , tapeStateHandle    :: !Handle
       }
@@ -106,6 +110,7 @@ fileTape path
     dispatch s Top           = tapeTop s
     dispatch s Bottom        = tapeBottom s
     dispatch s (Seek i)      = tapeSeek s i
+    dispatch s GetSeek       = tapeGetSeek s
     dispatch s (Get i)       = tapeGet s i
     dispatch s (Direction o) = tapeDirection s o
     dispatch s (Peek i)      = tapePeek s i
@@ -130,10 +135,19 @@ tapeBottom s
 --------------------------------------------------------------------------------
 tapeSeek :: MonadIO m => TapeState -> Integer -> Tape m (Resp, TapeState)
 tapeSeek s i
-    = do liftIO $ hSeek h AbsoluteSeek i
-         return (Unit, s)
+    = do case d of
+             Backward -> liftIO $ hSeek h SeekFromEnd i
+             Forward  -> liftIO $ hSeek h AbsoluteSeek i
+         return (Unit, s { tapeStatePos = i })
   where
     h = tapeStateHandle s
+    d = tapeStateDirection s
+
+--------------------------------------------------------------------------------
+tapeGetSeek :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeGetSeek s = return (RSeek i, s)
+  where
+    i = tapeStatePos s
 
 --------------------------------------------------------------------------------
 tapeGet :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
@@ -148,14 +162,14 @@ tapeGet s i
 
     getForward
         = liftIO $
-          do let p' = p + i
+          do let p' = p + (fromIntegral i)
                  s' = s { tapeStatePos = p' }
              b <- B.hGet h i
              return (Binary b, s')
 
     getBackward
         = liftIO $
-          do let p' = p - i
+          do let p' = p - (fromIntegral i)
                  s' = s { tapeStatePos = p' }
              hSeek h SeekFromEnd $ fromIntegral p'
              b <- B.hGet h i
@@ -182,13 +196,13 @@ tapePeek s i
     peekForward
         = liftIO $
           do bs <- B.hGet h i
-             hSeek h AbsoluteSeek $ fromIntegral p
+             hSeek h AbsoluteSeek p
              return (Binary bs, s)
 
     peekBackward
         = liftIO $
-          do let p' = p - i
-             hSeek h SeekFromEnd $ fromIntegral p'
+          do let p' = p - (fromIntegral i)
+             hSeek h SeekFromEnd p'
              b <- B.hGet h i
              return (Binary b,s)
 
@@ -205,16 +219,16 @@ tapeDiscard s i
 
     discardForward
         = liftIO $
-          do let p' = p + i
+          do let p' = p + (fromIntegral i)
                  s' = s { tapeStatePos = p' }
-             hSeek h AbsoluteSeek $ fromIntegral p'
+             hSeek h AbsoluteSeek p'
              return (Unit, s')
 
     discardBackward
         = liftIO $
-          do let p' = p - i
+          do let p' = p - (fromIntegral i)
                  s' = s { tapeStatePos = p' }
-             hSeek h SeekFromEnd $ fromIntegral p'
+             hSeek h SeekFromEnd p'
              return (Unit, s')
 
 --------------------------------------------------------------------------------
@@ -222,6 +236,18 @@ tapeDiscard s i
 --------------------------------------------------------------------------------
 driveSeek :: Monad m => Integer -> Drive m ()
 driveSeek i = void $ request $ Seek i
+
+--------------------------------------------------------------------------------
+driveGetSeek :: Monad m => Drive m Integer
+driveGetSeek
+    = do RSeek i <- request GetSeek
+         return i
+
+--------------------------------------------------------------------------------
+driveModifySeek :: Monad m => (Integer -> Integer) -> Drive m ()
+driveModifySeek k
+    = do i <- driveGetSeek
+         driveSeek $ k i
 
 --------------------------------------------------------------------------------
 driveTop :: Monad m => Drive m ()

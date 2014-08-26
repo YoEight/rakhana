@@ -17,6 +17,7 @@ module Data.Rakhana.Nursery
     , Playground
     , nurseryGetDocument
     , nurseryGetInfo
+    , nurseryGetPages
     , nurseryResolve
     , withNursery
     ) where
@@ -64,6 +65,7 @@ type Pages = Dictionary
 data NReq
     = RqDoc
     | RqInfo
+    | RqPages
     | RqResolve Reference
 
 --------------------------------------------------------------------------------
@@ -71,6 +73,7 @@ data NResp
     = Unit
     | RDoc Document
     | RInfo Dictionary
+    | RPages Dictionary
     | RResolve Object
 
 --------------------------------------------------------------------------------
@@ -121,6 +124,7 @@ nursery
   where
     dispatch s RqDoc           = serveDoc s
     dispatch s RqInfo          = serveInfo s
+    dispatch s RqPages         = servePages s
     dispatch s (RqResolve ref) = serveResolve s ref
 
 --------------------------------------------------------------------------------
@@ -134,6 +138,12 @@ serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
 serveInfo s = return (RInfo info, s)
   where
     info = nurseryInfo s
+
+--------------------------------------------------------------------------------
+servePages :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
+servePages s = return (RPages pages, s)
+  where
+    pages = nurseryPages s
 
 --------------------------------------------------------------------------------
 serveResolve :: MonadThrow m
@@ -238,10 +248,19 @@ resolveObject xref ref@(idx,gen)
                         case eR of
                             Left e
                                 -> throwM $ NurseryParsingException e
-                            Right iObj
-                                -> case indObject iObj of
+                            Right obj
+                                -> case obj of
                                        Ref idx gen -> loop (idx,gen)
-                                       obj         -> return obj
+                                       Dict d      -> couldBeStreamObject d
+                                       _           -> return obj
+    couldBeStreamObject d
+        = do eR <- parseRepeatedly 16 parseStreamHeader
+             case eR of
+                 Left _
+                     -> return $ Dict d
+                 Right _
+                     -> do p <- driveGetSeek
+                           return $ Stream d p
 
 --------------------------------------------------------------------------------
 withNursery :: MonadThrow m => Client' NReq NResp m a -> Drive m a
@@ -271,6 +290,12 @@ nurseryGetInfo :: Monad m => Playground m Dictionary
 nurseryGetInfo
     = do RInfo info <- request RqInfo
          return info
+
+--------------------------------------------------------------------------------
+nurseryGetPages :: Monad m => Playground m Dictionary
+nurseryGetPages
+    = do RPages pages <- request RqPages
+         return pages
 
 --------------------------------------------------------------------------------
 nurseryResolve :: Monad m => Reference -> Playground m Object

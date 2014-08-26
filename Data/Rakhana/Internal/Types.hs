@@ -46,18 +46,9 @@ data Object
     | Array (V.Vector Object)
     | Bytes ByteString
     | Ref Int Int
-    | Stream Dictionary ByteString
+    | Stream Dictionary Integer
     | Null
     deriving (Eq, Show)
-
---------------------------------------------------------------------------------
-data IndirectObject
-    = IndirectObject
-      { indObjectIndex      :: !Int
-      , indObjectGeneration :: !Int
-      , indObject           :: !Object
-      }
-      deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 data TableEntry
@@ -151,7 +142,7 @@ _Ref = prism' (\(i,g) -> Ref i g) go
     go _         = Nothing
 
 --------------------------------------------------------------------------------
-_Stream :: Prism' Object (Dictionary, ByteString)
+_Stream :: Prism' Object (Dictionary, Integer)
 _Stream = prism' (\(d,s) -> Stream d s) go
   where
     go (Stream d b) = Just (d, b)
