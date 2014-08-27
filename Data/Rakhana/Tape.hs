@@ -22,6 +22,7 @@ module Data.Rakhana.Tape
     , driveGetSeek
     , driveDiscard
     , driveGet
+    , driveGetLazy
     , driveModifySeek
     , drivePeek
     , driveSeek
@@ -31,7 +32,8 @@ module Data.Rakhana.Tape
     ) where
 
 --------------------------------------------------------------------------------
-import qualified Data.ByteString as B
+import qualified Data.ByteString      as B
+import qualified Data.ByteString.Lazy as BL
 import           Data.Functor (void)
 import           System.IO
 
@@ -55,6 +57,7 @@ data Req
     | Top
     | Bottom
     | Get Int
+    | GetLazy Int
     | Direction Direction
     | Peek Int
     | Discard Int
@@ -63,6 +66,7 @@ data Req
 data Resp
     = Unit
     | Binary B.ByteString
+    | BinaryLazy BL.ByteString
     | RSeek Integer
 
 --------------------------------------------------------------------------------
@@ -112,6 +116,7 @@ fileTape path
     dispatch s (Seek i)      = tapeSeek s i
     dispatch s GetSeek       = tapeGetSeek s
     dispatch s (Get i)       = tapeGet s i
+    dispatch s (GetLazy i)   = tapeGetLazy s i
     dispatch s (Direction o) = tapeDirection s o
     dispatch s (Peek i)      = tapePeek s i
     dispatch s (Discard i)   = tapeDiscard s i
@@ -174,6 +179,32 @@ tapeGet s i
              hSeek h SeekFromEnd $ fromIntegral p'
              b <- B.hGet h i
              return (Binary b, s')
+
+--------------------------------------------------------------------------------
+tapeGetLazy :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapeGetLazy s i
+    = case o of
+          Forward  -> getForward
+          Backward -> getBackward
+  where
+    p = tapeStatePos s
+    h = tapeStateHandle s
+    o = tapeStateDirection s
+
+    getForward
+        = liftIO $
+          do let p' = p + (fromIntegral i)
+                 s' = s { tapeStatePos = p' }
+             b <- BL.hGet h i
+             return (BinaryLazy b, s')
+
+    getBackward
+        = liftIO $
+          do let p' = p - (fromIntegral i)
+                 s' = s { tapeStatePos = p' }
+             hSeek h SeekFromEnd $ fromIntegral p'
+             b <- BL.hGet h i
+             return (BinaryLazy b, s')
 
 --------------------------------------------------------------------------------
 tapeDirection :: MonadIO m => TapeState -> Direction -> Tape m (Resp, TapeState)
@@ -261,6 +292,12 @@ driveBottom = void $ request Bottom
 driveGet :: Monad m => Int -> Drive m B.ByteString
 driveGet i
     = do Binary b <- request $ Get i
+         return b
+
+--------------------------------------------------------------------------------
+driveGetLazy :: Monad m => Int -> Drive m BL.ByteString
+driveGetLazy i
+    = do BinaryLazy b <- request $ GetLazy i
          return b
 
 --------------------------------------------------------------------------------

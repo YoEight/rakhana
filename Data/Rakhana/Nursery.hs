@@ -17,18 +17,21 @@ module Data.Rakhana.Nursery
     , nurseryGetInfo
     , nurseryGetHeader
     , nurseryGetPages
+    , nurseryLoadStreamData
     , nurseryResolve
     , withNursery
     ) where
 
 --------------------------------------------------------------------------------
 import           Control.Applicative
-import           Data.ByteString
-import qualified Data.Map.Strict as M
+import qualified Data.ByteString      as B
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Map.Strict      as M
 import           Data.Traversable (forM)
 import           Data.Typeable hiding (Proxy)
 
 --------------------------------------------------------------------------------
+import Codec.Compression.Zlib (decompress)
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.Reader
@@ -51,6 +54,7 @@ data NurseryException
     | NurseryUnresolvedObject Int Int
     | NurseryRootNotFound
     | NurseryPagesNotFound
+    | NurseryInvalidStreamObject
     deriving (Show, Typeable)
 
 --------------------------------------------------------------------------------
@@ -65,10 +69,12 @@ data NReq
     | RqHeader
     | RqPages
     | RqResolve Reference
+    | RqLoadStreamData Stream
 
 --------------------------------------------------------------------------------
 data NResp
     = Unit
+    | RBinaryLazy BL.ByteString
     | RInfo Dictionary
     | RHeader Header
     | RPages Dictionary
@@ -110,10 +116,11 @@ nursery
          rq <- respond Unit
          nurseryLoop dispatch initState rq
   where
-    dispatch s RqInfo          = serveInfo s
-    dispatch s RqPages         = servePages s
-    dispatch s (RqResolve ref) = serveResolve s ref
-    dispatch s RqHeader        = serveHeader s
+    dispatch s RqInfo               = serveInfo s
+    dispatch s RqPages              = servePages s
+    dispatch s (RqResolve ref)      = serveResolve s ref
+    dispatch s RqHeader             = serveHeader s
+    dispatch s (RqLoadStreamData t) = serveLoadStream s t
 
 --------------------------------------------------------------------------------
 serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
@@ -142,6 +149,34 @@ serveResolve s ref
     = do obj <- resolveObject xref ref
          return (RResolve obj, s)
   where
+    xref = nurseryXRef s
+
+--------------------------------------------------------------------------------
+serveLoadStream :: MonadThrow m
+                => NurseryState
+                -> Stream
+                -> Nursery m (NResp, NurseryState)
+serveLoadStream s st
+    = do mLen <- dict ^!? dictKey "Length"
+                      . act (resolveIfRef xref)
+                      . _Number
+                      . _Natural
+         case mLen of
+             Nothing
+                 -> throwM NurseryInvalidStreamObject
+             Just len
+                 -> do driveSeek pos
+                       bs <- driveGetLazy $ fromIntegral len
+                       let filt = dict ^? dictKey "Filter" . _Name
+                           bs'  = case filt of
+                                      Nothing -> bs
+                                      Just x | "FlateDecode" <- x
+                                               -> decompress bs
+                                             | otherwise -> bs
+                       return (RBinaryLazy bs', s)
+  where
+    dict = streamDict st
+    pos  = streamPos st
     xref = nurseryXRef s
 
 --------------------------------------------------------------------------------
@@ -194,6 +229,11 @@ getPages xref root
           . _Dict
 
 --------------------------------------------------------------------------------
+resolveIfRef :: MonadThrow m => XRef -> Object -> Nursery m Object
+resolveIfRef xref (Ref i g) = resolveObject xref (i,g)
+resolveIfRef _ obj          = return obj
+
+--------------------------------------------------------------------------------
 resolveObject :: MonadThrow m => XRef -> Reference -> Nursery m Object
 resolveObject xref ref@(idx,gen)
     = do driveTop
@@ -225,7 +265,7 @@ resolveObject xref ref@(idx,gen)
                      -> return $ Dict d
                  Right _
                      -> do p <- driveGetSeek
-                           return $ Stream d p
+                           return $ AStream $ Stream d p
 
 --------------------------------------------------------------------------------
 withNursery :: MonadThrow m => Client' NReq NResp m a -> Drive m a
@@ -267,3 +307,9 @@ nurseryResolve :: Monad m => Reference -> Playground m Object
 nurseryResolve ref
     = do RResolve obj <- request $ RqResolve ref
          return obj
+
+--------------------------------------------------------------------------------
+nurseryLoadStreamData :: Monad m => Stream -> Playground m BL.ByteString
+nurseryLoadStreamData s
+    = do RBinaryLazy bs <- request $ RqLoadStreamData s
+         return bs

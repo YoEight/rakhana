@@ -38,6 +38,14 @@ type Dictionary = M.Map ByteString Object
 type Reference = (Int, Int)
 
 --------------------------------------------------------------------------------
+data Stream
+    = Stream
+      { streamDict :: !Dictionary
+      , streamPos  :: !Integer
+      }
+      deriving (Eq, Show)
+
+--------------------------------------------------------------------------------
 data Object
     = Number Number
     | Boolean Bool
@@ -46,7 +54,7 @@ data Object
     | Array (V.Vector Object)
     | Bytes ByteString
     | Ref Int Int
-    | Stream Dictionary Integer
+    | AStream Stream
     | Null
     deriving (Eq, Show)
 
@@ -142,11 +150,11 @@ _Ref = prism' (\(i,g) -> Ref i g) go
     go _         = Nothing
 
 --------------------------------------------------------------------------------
-_Stream :: Prism' Object (Dictionary, Integer)
-_Stream = prism' (\(d,s) -> Stream d s) go
+_Stream :: Prism' Object Stream
+_Stream = prism' AStream go
   where
-    go (Stream d b) = Just (d, b)
-    go _            = Nothing
+    go (AStream s) = Just s
+    go _           = Nothing
 
 --------------------------------------------------------------------------------
 dictKey :: ByteString -> Traversal' Dictionary Object
