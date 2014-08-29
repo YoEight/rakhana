@@ -23,20 +23,14 @@ module Data.Rakhana.Nursery
     ) where
 
 --------------------------------------------------------------------------------
-import           Control.Applicative
-import qualified Data.ByteString      as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict      as M
-import           Data.Traversable (forM)
 import           Data.Typeable hiding (Proxy)
 
 --------------------------------------------------------------------------------
 import Codec.Compression.Zlib (decompress)
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import Data.Attoparsec.ByteString
 import Pipes hiding (Effect)
 import Pipes.Core
 
@@ -44,7 +38,6 @@ import Pipes.Core
 import Data.Rakhana.Internal.Parsers
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Tape
-import Data.Rakhana.Util.Dictionary
 import Data.Rakhana.Util.Drive
 import Data.Rakhana.XRef
 
@@ -175,17 +168,13 @@ serveLoadStream s st
                                              | otherwise -> bs
                        return (RBinaryLazy bs', s)
   where
-    dict = streamDict st
-    pos  = streamPos st
+    dict = st ^. streamDict
+    pos  = st ^. streamPos
     xref = nurseryXRef s
 
 --------------------------------------------------------------------------------
 getHeader :: MonadThrow m => Nursery m Header
-getHeader
-    = do bs <- driveGet 8
-         case parseOnly parseHeader bs of
-             Left e  -> throwM $ NurseryParsingException e
-             Right h -> return h
+getHeader = driveParse 8 parseHeader
 
 --------------------------------------------------------------------------------
 getInfo :: MonadThrow m => XRef -> Nursery m Dictionary
@@ -249,23 +238,10 @@ resolveObject xref ref@(idx,gen)
               Just e
                   -> do let offset = tableEntryOffset e
                         driveSeek offset
-                        eR <- parseRepeatedly bufferSize parseIndirectObject
-                        case eR of
-                            Left e
-                                -> throwM $ NurseryParsingException e
-                            Right obj
-                                -> case obj of
-                                       Ref idx gen -> loop (idx,gen)
-                                       Dict d      -> couldBeStreamObject d
-                                       _           -> return obj
-    couldBeStreamObject d
-        = do eR <- parseRepeatedly 16 parseStreamHeader
-             case eR of
-                 Left _
-                     -> return $ Dict d
-                 Right _
-                     -> do p <- driveGetSeek
-                           return $ AStream $ Stream d p
+                        r <- driveParseObject bufferSize
+                        case r ^. _3 of
+                            Ref nidx ngen -> loop (nidx,ngen)
+                            _             -> return $ r ^. _3
 
 --------------------------------------------------------------------------------
 withNursery :: MonadThrow m => Client' NReq NResp m a -> Drive m a

@@ -18,15 +18,12 @@ module Data.Rakhana.XRef
     ) where
 
 --------------------------------------------------------------------------------
-import           Control.Monad (when)
-import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
 import           Data.Char (isDigit, isSpace)
 import           Data.Typeable
 
 --------------------------------------------------------------------------------
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Data.Attoparsec.ByteString
 import Pipes.Safe ()
 
 --------------------------------------------------------------------------------
@@ -97,9 +94,6 @@ parseXRefPosInteger = go []
                        | isDigit c -> driveDiscard 1 >> go (c:cs)
                        | otherwise -> return $ read cs
                    _ -> return $ read cs
-
-    end [] = throwM $ XRefParsingException "Invalid XRef position integer"
-    end cs = return $ read cs
 
 --------------------------------------------------------------------------------
 parseStartXRef :: MonadThrow m => Drive m ()

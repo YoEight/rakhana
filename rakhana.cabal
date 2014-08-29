@@ -55,7 +55,6 @@ library
                  Data.Rakhana.Internal.Types
                  Data.Rakhana.Nursery
                  Data.Rakhana.Tape
-                 Data.Rakhana.Util.Dictionary
                  Data.Rakhana.Util.Drive
                  Data.Rakhana.XRef
 
@@ -65,7 +64,6 @@ library
 
   -- Other library packages from which modules are imported.
   build-depends:       base       >=4.7 && <4.8
-                     , array
                      , attoparsec == 0.12.*
                      , bytestring
                      , containers == 0.5.*

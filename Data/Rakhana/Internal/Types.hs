@@ -17,13 +17,10 @@ module Data.Rakhana.Internal.Types where
 import           Control.Applicative (pure)
 import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as M
-import           Data.Monoid
 import qualified Data.Vector     as V
 
 --------------------------------------------------------------------------------
 import Control.Lens
-import Control.Monad.Catch (MonadThrow)
-import Pipes (Producer')
 
 --------------------------------------------------------------------------------
 data Number
@@ -40,8 +37,8 @@ type Reference = (Int, Int)
 --------------------------------------------------------------------------------
 data Stream
     = Stream
-      { streamDict :: !Dictionary
-      , streamPos  :: !Integer
+      { _streamDict :: !Dictionary
+      , _streamPos  :: !Integer
       }
       deriving (Eq, Show)
 
@@ -173,3 +170,13 @@ nth i k ar
           Just a  -> fmap go $ k a
   where
     go a' = ar V.// [(i,a')]
+
+--------------------------------------------------------------------------------
+-- Lenses
+--------------------------------------------------------------------------------
+streamDict :: Lens' Stream Dictionary
+streamDict = lens _streamDict (\s d -> s { _streamDict = d })
+
+--------------------------------------------------------------------------------
+streamPos :: Lens' Stream Integer
+streamPos = lens _streamPos (\s p -> s { _streamPos = p })

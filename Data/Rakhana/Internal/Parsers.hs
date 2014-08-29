@@ -16,33 +16,28 @@ module Data.Rakhana.Internal.Parsers where
 --------------------------------------------------------------------------------
 import           Prelude hiding (take)
 import           Control.Applicative ((<$), (<|>), many)
-import           Control.Monad (when)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
 import           Data.Char (digitToInt, isDigit, isHexDigit)
-import           Data.Map (Map, fromList, lookup)
+import           Data.Map (Map, fromList)
 import qualified Data.Vector           as V
 
 --------------------------------------------------------------------------------
-import           Data.Array
-import           Data.Attoparsec.ByteString (Parser)
-import qualified Data.Attoparsec.ByteString as AB
-import           Data.Attoparsec.ByteString.Char8 hiding (isDigit)
-import           Data.Scientific (floatingOrInteger)
+import Data.Attoparsec.ByteString.Char8 hiding (isDigit)
+import Data.Scientific (floatingOrInteger)
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Types
-import Data.Rakhana.Util.Dictionary
 
 --------------------------------------------------------------------------------
 parseHeader :: Parser Header
 parseHeader
-    = do _   <- string "%PDF-"
-         maj <- decimal
-         _   <- char '.'
-         min <- decimal
-         return $ makeHeader maj min
+    = do _      <- string "%PDF-"
+         majVer <- decimal
+         _      <- char '.'
+         minVer <- decimal
+         return $ makeHeader majVer minVer
 
 --------------------------------------------------------------------------------
 startXRef :: Parser Int
@@ -79,9 +74,9 @@ parseSubsectionHeader :: Parser (Int, Int)
 parseSubsectionHeader
     = do start <- decimal
          skipSpace
-         count <- decimal
+         len   <- decimal
          pdfEndOfLine
-         return (start, count)
+         return (start, len)
 
 --------------------------------------------------------------------------------
 parseTrailerAfterTable :: Parser Dictionary
@@ -174,7 +169,7 @@ parseNameString
 parseStringBytes :: Parser Object
 parseStringBytes
     = do _ <- char '('
-         s <- takeStr 0 []
+         s <- takeStr (0 :: Int) []
          return $ Bytes $ B8.pack s
   where
     takeStr lvl res
@@ -265,7 +260,7 @@ parseStreamHeader
          return ()
 
 --------------------------------------------------------------------------------
-parseIndirectObject :: Parser Object
+parseIndirectObject :: Parser (Int, Int, Object)
 parseIndirectObject
     = do skipSpace
          idx <- decimal
@@ -275,7 +270,8 @@ parseIndirectObject
          _   <- string "obj"
          skipSpace
          skipComment
-         parseObject
+         obj <- parseObject
+         return (idx, gen, obj)
 
 --------------------------------------------------------------------------------
 makeXRef :: (Int, Int)
@@ -293,7 +289,7 @@ makeXRef header entries dict
 makeTableEntry :: Integer -> Int -> Bool -> TableEntry
 makeTableEntry offset gen free
     = TableEntry
-      { tableEntryOffset = offset
+      { tableEntryOffset     = offset
       , tableEntryGeneration = gen
       , tableEntryFree       = free
       }
@@ -328,8 +324,7 @@ skipComment :: Parser ()
 skipComment
     = option () $
           do _ <- char '%'
-             _ <- manyTill anyChar pdfEndOfLine
-             return ()
+             skipWhile (not . isSpace)
 
 --------------------------------------------------------------------------------
 parseEndOfObject :: Parser ()
