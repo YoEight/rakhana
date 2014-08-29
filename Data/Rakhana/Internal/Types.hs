@@ -55,30 +55,18 @@ data Object
     deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
-data TableEntry
-    = TableEntry
-      { tableEntryOffset     :: !Integer
-      , tableEntryGeneration :: !Int
-      , tableEntryFree       :: !Bool
-      }
-      deriving Show
-
---------------------------------------------------------------------------------
-data XRef
-    = XRef
-      { xrefHeader  :: !(Int, Int)
-      , xrefEntries :: !(M.Map Reference TableEntry)
-      , xrefTrailer :: !Dictionary
-      }
-      deriving Show
-
---------------------------------------------------------------------------------
 data Header
     = Header
       { headerMaj :: !Int
       , headerMin :: !Int
       }
       deriving Show
+
+--------------------------------------------------------------------------------
+data Filter
+    = FlateDecode
+    | Filter_Unsupported ByteString
+    deriving Show
 
 --------------------------------------------------------------------------------
 -- Prisms

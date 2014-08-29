@@ -59,17 +59,29 @@ driveParse bufSize parser
 
 --------------------------------------------------------------------------------
 driveParseObject :: MonadThrow m => Int -> Drive m (Int, Int, Object)
-driveParseObject bufSize
-    = do r <- driveParse bufSize parseIndirectObject
-         case r ^. _3 of
-             Dict d -> couldBeStreamObject (r ^. _1, r ^. _2) d
-             _      -> return r
+driveParseObject i
+    = do rE <- driveParseObjectE i
+         either (throwM . ParsingException) return rE
+
+--------------------------------------------------------------------------------
+driveParseObjectE :: Monad m
+                  => Int
+                  -> Drive m (Either String (Int, Int, Object))
+driveParseObjectE bufSize
+    = do rE <- parseRepeatedly bufSize parseIndirectObject
+         case rE of
+             Left e -> return $ Left e
+             Right r
+                 | Dict d <- r ^. _3
+                   -> couldBeStreamObject (r ^. _1, r ^. _2) d
+                 | otherwise
+                   -> return $ Right r
   where
     couldBeStreamObject (idx, gen) d
         = do eR <- parseRepeatedly 16 parseStreamHeader
              case eR of
                  Left _
-                     -> return $ (idx, gen, Dict d)
+                     -> return $ Right $ (idx, gen, Dict d)
                  Right _
                      -> do p <- driveGetSeek
-                           return (idx, gen, AStream $ Stream d p)
+                           return $ Right $ (idx, gen, AStream $ Stream d p)

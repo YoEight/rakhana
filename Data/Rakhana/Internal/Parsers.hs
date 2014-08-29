@@ -20,7 +20,7 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString       as B
 import qualified Data.ByteString.Char8 as B8
 import           Data.Char (digitToInt, isDigit, isHexDigit)
-import           Data.Map (Map, fromList)
+import           Data.Map (fromList)
 import qualified Data.Vector           as V
 
 --------------------------------------------------------------------------------
@@ -52,75 +52,6 @@ startXRef
          case res of
              [] -> fail "Trailer not found"
              xs -> return $ last xs
-
---------------------------------------------------------------------------------
-tableXRef :: Parser ()
-tableXRef
-    = do _ <- string "xref"
-         pdfEndOfLine
-
---------------------------------------------------------------------------------
-parseXRef :: Parser XRef
-parseXRef
-    = do skipSpace
-         tableXRef
-         h@(s,_) <- parseSubsectionHeader
-         es      <- parseTableEntries s
-         t       <- parseTrailerAfterTable
-         return $ makeXRef h (fromList es) t
-
---------------------------------------------------------------------------------
-parseSubsectionHeader :: Parser (Int, Int)
-parseSubsectionHeader
-    = do start <- decimal
-         skipSpace
-         len   <- decimal
-         pdfEndOfLine
-         return (start, len)
-
---------------------------------------------------------------------------------
-parseTrailerAfterTable :: Parser Dictionary
-parseTrailerAfterTable
-    = do skipSpace
-         _ <- string "trailer"
-         pdfEndOfLine
-         skipSpace
-         Dict d <- parseDict
-         return d
-
---------------------------------------------------------------------------------
-parseTableEntries :: Int -> Parser [(Reference, TableEntry)]
-parseTableEntries start
-    = loop start
-  where
-    loop i
-        = do mT <- optional parseTableEntry
-             case mT of
-                 Nothing -> return []
-                 Just t
-                     -> let gen = tableEntryGeneration t
-                            off = tableEntryOffset t
-                            ref = (i,gen) in
-                        if (off /= 0)
-                        then fmap ((ref,t):) $ loop (i+1)
-                        else loop (i+1)
-
---------------------------------------------------------------------------------
-parseTableEntry :: Parser TableEntry
-parseTableEntry
-    = do skipSpace
-         offset <- decimal
-         skipSpace
-         gen <- decimal
-         skipSpace
-         c <- anyChar
-         case c of
-             'n' -> return $ makeTableEntry offset gen False
-             'f' -> return $ makeTableEntry offset gen True
-             _   ->
-                 let msg = "error parsing XRef table entry: unknown char: " ++
-                           [c] in
-                 fail msg
 
 --------------------------------------------------------------------------------
 parseDict :: Parser Object
@@ -258,9 +189,8 @@ parseObject = skipSpace >> go
 parseStreamHeader :: Parser ()
 parseStreamHeader
     = do skipSpace
-         _     <- string "stream"
-         skipSpace
-         return ()
+         _ <- string "stream"
+         endOfLine
 
 --------------------------------------------------------------------------------
 parseIndirectObject :: Parser (Int, Int, Object)
@@ -277,40 +207,12 @@ parseIndirectObject
          return (idx, gen, obj)
 
 --------------------------------------------------------------------------------
-makeXRef :: (Int, Int)
-         -> Map Reference TableEntry
-         -> Dictionary
-         -> XRef
-makeXRef header entries dict
-    = XRef
-      { xrefHeader  = header
-      , xrefEntries = entries
-      , xrefTrailer = dict
-      }
-
---------------------------------------------------------------------------------
-makeTableEntry :: Integer -> Int -> Bool -> TableEntry
-makeTableEntry offset gen free
-    = TableEntry
-      { tableEntryOffset     = offset
-      , tableEntryGeneration = gen
-      , tableEntryFree       = free
-      }
-
---------------------------------------------------------------------------------
 makeHeader :: Int -> Int -> Header
 makeHeader mj mi
     = Header
       { headerMaj    = mj
       , headerMin    = mi
       }
-
---------------------------------------------------------------------------------
-parseTillStreamData :: Parser ()
-parseTillStreamData
-    = do skipSpace
-         _ <- string "stream"
-         pdfEndOfLine
 
 --------------------------------------------------------------------------------
 charToInt :: Char -> Int
