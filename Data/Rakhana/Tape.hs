@@ -323,8 +323,5 @@ driveDiscard :: Monad m => Int -> Drive m ()
 driveDiscard i = void $ request $ Discard i
 
 --------------------------------------------------------------------------------
-runDrive :: Monad m
-         => (forall r. Tape m r)
-         -> Drive m a
-         -> m a
+runDrive :: Monad m  => (forall r. Tape m r) -> Drive m a  -> m a
 runDrive tape drive = runEffect (tape >>~ const drive)

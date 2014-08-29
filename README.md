@@ -1,4 +1,4 @@
 rakhana
 =======
 
-PDF library written in Haskell
+Stream based PDF library

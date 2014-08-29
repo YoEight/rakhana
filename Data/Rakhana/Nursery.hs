@@ -244,7 +244,7 @@ resolveObject xref ref@(idx,gen)
                             _             -> return $ r ^. _3
 
 --------------------------------------------------------------------------------
-withNursery :: MonadThrow m => Client' NReq NResp m a -> Drive m a
+withNursery :: MonadThrow m => Playground m a -> Drive m a
 withNursery user = nursery >>~ const user
 
 --------------------------------------------------------------------------------

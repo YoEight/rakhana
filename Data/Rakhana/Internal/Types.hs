@@ -1,5 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RankNTypes #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.Internal.Types
