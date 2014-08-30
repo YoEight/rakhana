@@ -12,10 +12,18 @@
 --------------------------------------------------------------------------------
 module Data.Rakhana
     ( Dictionary
+    , Drive
+    , Header
     , Object
+    , NReq
+    , NResp
+    , Number
     , Playground
     , Reference
     , Stream
+    , Tape
+    , TReq
+    , TResp
     -- Prisms
     , _Array
     , _Boolean

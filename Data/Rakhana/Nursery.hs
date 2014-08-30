@@ -14,6 +14,8 @@
 --------------------------------------------------------------------------------
 module Data.Rakhana.Nursery
     ( Playground
+    , NReq
+    , NResp
     , nurseryGetInfo
     , nurseryGetHeader
     , nurseryGetPages
@@ -32,7 +34,7 @@ import           Data.Typeable hiding (Proxy)
 import Codec.Compression.Zlib (decompress)
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Pipes hiding (Effect)
+import Pipes
 import Pipes.Core
 
 --------------------------------------------------------------------------------
@@ -52,7 +54,7 @@ data NurseryException
     deriving (Show, Typeable)
 
 --------------------------------------------------------------------------------
-type Nursery m a = Proxy Req Resp NReq NResp m a
+type Nursery m a = Proxy TReq TResp NReq NResp m a
 type Playground m a = Client' NReq NResp m a
 type Root = Dictionary
 type Pages = Dictionary

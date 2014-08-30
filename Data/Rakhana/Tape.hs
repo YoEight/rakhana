@@ -13,8 +13,8 @@
 module Data.Rakhana.Tape
     ( Drive
     , Direction(..)
-    , Req
-    , Resp
+    , TReq
+    , TResp
     , Tape
     , driveBottom
     , driveBackward
@@ -42,8 +42,8 @@ import Pipes
 import Pipes.Core
 
 --------------------------------------------------------------------------------
-type Tape m a  = Server' Req Resp m a
-type Drive m a = Client' Req Resp m a
+type Tape m a  = Server' TReq TResp m a
+type Drive m a = Client' TReq TResp m a
 
 --------------------------------------------------------------------------------
 data Direction
@@ -51,7 +51,7 @@ data Direction
     | Backward
 
 --------------------------------------------------------------------------------
-data Req
+data TReq
     = Seek Integer
     | GetSeek
     | Top
@@ -63,7 +63,7 @@ data Req
     | Discard Int
 
 --------------------------------------------------------------------------------
-data Resp
+data TResp
     = Unit
     | Binary B.ByteString
     | BinaryLazy BL.ByteString
@@ -90,9 +90,9 @@ initTapeState path h
 
 --------------------------------------------------------------------------------
 tapeLoop :: Monad m
-         => (TapeState -> Req -> Tape m (Resp, TapeState))
+         => (TapeState -> TReq -> Tape m (TResp, TapeState))
          -> TapeState
-         -> Req
+         -> TReq
          -> Tape m r
 tapeLoop k s rq
     = do (r, s') <- k s rq
@@ -122,7 +122,7 @@ fileTape path
     dispatch s (Discard i)   = tapeDiscard s i
 
 --------------------------------------------------------------------------------
-tapeTop :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeTop :: MonadIO m => TapeState -> Tape m (TResp, TapeState)
 tapeTop s
     = do liftIO $ hSeek h AbsoluteSeek 0
          return (Unit, s { tapeStatePos = 0 })
@@ -130,7 +130,7 @@ tapeTop s
     h = tapeStateHandle s
 
 --------------------------------------------------------------------------------
-tapeBottom :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeBottom :: MonadIO m => TapeState -> Tape m (TResp, TapeState)
 tapeBottom s
     = do liftIO $ hSeek h SeekFromEnd 0
          return (Unit, s { tapeStatePos = 0 })
@@ -138,7 +138,7 @@ tapeBottom s
     h = tapeStateHandle s
 
 --------------------------------------------------------------------------------
-tapeSeek :: MonadIO m => TapeState -> Integer -> Tape m (Resp, TapeState)
+tapeSeek :: MonadIO m => TapeState -> Integer -> Tape m (TResp, TapeState)
 tapeSeek s i
     = do case d of
              Backward -> liftIO $ hSeek h SeekFromEnd i
@@ -149,13 +149,13 @@ tapeSeek s i
     d = tapeStateDirection s
 
 --------------------------------------------------------------------------------
-tapeGetSeek :: MonadIO m => TapeState -> Tape m (Resp, TapeState)
+tapeGetSeek :: MonadIO m => TapeState -> Tape m (TResp, TapeState)
 tapeGetSeek s = return (RSeek i, s)
   where
     i = tapeStatePos s
 
 --------------------------------------------------------------------------------
-tapeGet :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapeGet :: MonadIO m => TapeState -> Int -> Tape m (TResp, TapeState)
 tapeGet s i
     = case o of
           Forward  -> getForward
@@ -181,7 +181,7 @@ tapeGet s i
              return (Binary b, s')
 
 --------------------------------------------------------------------------------
-tapeGetLazy :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapeGetLazy :: MonadIO m => TapeState -> Int -> Tape m (TResp, TapeState)
 tapeGetLazy s i
     = case o of
           Forward  -> getForward
@@ -207,14 +207,14 @@ tapeGetLazy s i
              return (BinaryLazy b, s')
 
 --------------------------------------------------------------------------------
-tapeDirection :: MonadIO m => TapeState -> Direction -> Tape m (Resp, TapeState)
+tapeDirection :: MonadIO m => TapeState -> Direction -> Tape m (TResp, TapeState)
 tapeDirection s o
     = return (Unit, s')
   where
     s' = s { tapeStateDirection = o }
 
 --------------------------------------------------------------------------------
-tapePeek :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapePeek :: MonadIO m => TapeState -> Int -> Tape m (TResp, TapeState)
 tapePeek s i
     = case o of
           Forward  -> peekForward
@@ -238,7 +238,7 @@ tapePeek s i
              return (Binary b,s)
 
 --------------------------------------------------------------------------------
-tapeDiscard :: MonadIO m => TapeState -> Int -> Tape m (Resp, TapeState)
+tapeDiscard :: MonadIO m => TapeState -> Int -> Tape m (TResp, TapeState)
 tapeDiscard s i
     = case o of
           Forward  -> discardForward
