@@ -99,8 +99,11 @@ parseTableEntries start
                  Nothing -> return []
                  Just t
                      -> let gen = tableEntryGeneration t
+                            off = tableEntryOffset t
                             ref = (i,gen) in
-                        fmap ((ref,t):) $ loop (i+1)
+                        if (off /= 0)
+                        then fmap ((ref,t):) $ loop (i+1)
+                        else loop (i+1)
 
 --------------------------------------------------------------------------------
 parseTableEntry :: Parser TableEntry

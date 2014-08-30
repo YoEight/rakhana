@@ -37,6 +37,7 @@ module Data.Rakhana
     , nurseryGetHeader
     , nurseryGetPages
     , nurseryLoadStreamData
+    , nurseryGetReferences
     , nurseryResolve
     , withNursery
     -- Tape

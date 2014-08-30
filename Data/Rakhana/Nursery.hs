@@ -18,6 +18,7 @@ module Data.Rakhana.Nursery
     , nurseryGetHeader
     , nurseryGetPages
     , nurseryLoadStreamData
+    , nurseryGetReferences
     , nurseryResolve
     , withNursery
     ) where
@@ -63,6 +64,7 @@ data NReq
     | RqPages
     | RqResolve Reference
     | RqLoadStreamData Stream
+    | RqReferences
 
 --------------------------------------------------------------------------------
 data NResp
@@ -72,6 +74,7 @@ data NResp
     | RHeader Header
     | RPages Dictionary
     | RResolve Object
+    | RReferences [Reference]
 
 --------------------------------------------------------------------------------
 instance Exception NurseryException
@@ -114,6 +117,7 @@ nursery
     dispatch s (RqResolve ref)      = serveResolve s ref
     dispatch s RqHeader             = serveHeader s
     dispatch s (RqLoadStreamData t) = serveLoadStream s t
+    dispatch s RqReferences         = serveReferences s
 
 --------------------------------------------------------------------------------
 serveInfo :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
@@ -171,6 +175,13 @@ serveLoadStream s st
     dict = st ^. streamDict
     pos  = st ^. streamPos
     xref = nurseryXRef s
+
+--------------------------------------------------------------------------------
+serveReferences :: Monad m => NurseryState -> Nursery m (NResp, NurseryState)
+serveReferences s
+    = return (RReferences $ rs, s)
+  where
+    rs = M.keys $ xrefEntries $ nurseryXRef s
 
 --------------------------------------------------------------------------------
 getHeader :: MonadThrow m => Nursery m Header
@@ -289,3 +300,9 @@ nurseryLoadStreamData :: Monad m => Stream -> Playground m BL.ByteString
 nurseryLoadStreamData s
     = do RBinaryLazy bs <- request $ RqLoadStreamData s
          return bs
+
+--------------------------------------------------------------------------------
+nurseryGetReferences :: Monad m => Playground m [Reference]
+nurseryGetReferences
+    = do RReferences rs <- request $ RqReferences
+         return rs

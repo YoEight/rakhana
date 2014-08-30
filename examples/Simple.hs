@@ -12,6 +12,9 @@
 module Simple where
 
 --------------------------------------------------------------------------------
+import Data.Foldable (for_)
+
+--------------------------------------------------------------------------------
 import Control.Monad.Trans (liftIO)
 import Data.Rakhana
 
@@ -21,11 +24,16 @@ playground
     = do header <- nurseryGetHeader
          info   <- nurseryGetInfo
          pages  <- nurseryGetPages
+         refs   <- nurseryGetReferences
 
          liftIO $
              do print header
                 print info
                 print pages
+
+         for_ refs $ \ref ->
+             do obj <- nurseryResolve ref
+                liftIO $ print obj
 
 --------------------------------------------------------------------------------
 main :: IO ()
