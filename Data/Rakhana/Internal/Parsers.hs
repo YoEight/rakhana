@@ -2,14 +2,14 @@
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.Internal.Parsers
--- Copyright : (C) 2014 Yorick Laupa
+-- Copyright : (C) 2013 Yuras Shumovich, (C) 2014 Yorick Laupa
 -- License : (see the file LICENSE)
 --
 -- Maintainer : Yorick Laupa <yo.eight@gmail.com>
 -- Stability : provisional
 -- Portability : non-portable
 --
--- Base on pdf-toolbox Parser code
+-- Based on pdf-toolbox Parser code
 --------------------------------------------------------------------------------
 module Data.Rakhana.Internal.Parsers where
 
