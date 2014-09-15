@@ -167,8 +167,11 @@ tapeGet s i
 
     getForward
         = liftIO $
-          do let p' = p + (fromIntegral i)
-                 s' = s { tapeStatePos = p' }
+          do siz <- hFileSize h
+             let p'    = p + (fromIntegral i)
+                 delta = p' - siz
+                 p''   = if delta > 0 then p' - delta else p'
+                 s'    = s { tapeStatePos = p'' }
              b <- B.hGet h i
              return (Binary b, s')
 
