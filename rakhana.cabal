@@ -10,7 +10,7 @@ name:                rakhana
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.1.0.1
+version:             0.2.0.0
 
 -- A short (one-line) description of the package.
 synopsis: Stream based PDF library
@@ -66,8 +66,7 @@ library
                  Data.Rakhana.XRef
 
   -- LANGUAGE extensions used by modules in this package.
-  other-extensions: DeriveDataTypeable
-                    FlexibleContexts
+  other-extensions: FlexibleContexts
                     OverloadedStrings
                     RankNTypes
                     TemplateHaskell
@@ -77,7 +76,6 @@ library
                      , attoparsec   == 0.12.*
                      , bytestring
                      , containers   == 0.5.*
-                     , exceptions   == 0.6.*
                      , lens         == 4.4.*
                      , mtl
                      , pipes        == 4.*

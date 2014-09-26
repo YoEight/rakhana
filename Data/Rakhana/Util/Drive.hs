@@ -20,7 +20,6 @@ import           Data.Typeable
 --------------------------------------------------------------------------------
 import Control.Exception
 import Control.Lens
-import Control.Monad.Catch (MonadThrow(..))
 import Data.Attoparsec.ByteString
 import Pipes.Safe ()
 
@@ -36,8 +35,8 @@ data ParsingException = ParsingException String deriving (Show, Typeable)
 instance Exception ParsingException
 
 --------------------------------------------------------------------------------
-parseRepeatedly :: Monad m => Int -> Parser a -> Drive m (Either String a)
-parseRepeatedly bufferSize parser
+driveParse :: Monad m => Int -> Parser a -> Drive m (Either String a)
+driveParse bufferSize parser
     = loop Nothing
   where
     loop mK
@@ -50,25 +49,11 @@ parseRepeatedly bufferSize parser
                                   return $ Right a
 
 --------------------------------------------------------------------------------
-driveParse :: MonadThrow m => Int -> Parser a -> Drive m a
-driveParse bufSize parser
-    = do eR <- parseRepeatedly bufSize parser
-         case eR of
-             Left e  -> throwM $ ParsingException e
-             Right a -> return a
-
---------------------------------------------------------------------------------
-driveParseObject :: MonadThrow m => Int -> Drive m (Int, Int, Object)
-driveParseObject i
-    = do rE <- driveParseObjectE i
-         either (throwM . ParsingException) return rE
-
---------------------------------------------------------------------------------
-driveParseObjectE :: Monad m
-                  => Int
-                  -> Drive m (Either String (Int, Int, Object))
-driveParseObjectE bufSize
-    = do rE <- parseRepeatedly bufSize parseIndirectObject
+driveParseObject :: Monad m
+                 => Int
+                 -> Drive m (Either String (Int, Int, Object))
+driveParseObject bufSize
+    = do rE <- driveParse bufSize parseIndirectObject
          case rE of
              Left e -> return $ Left e
              Right r
@@ -78,7 +63,7 @@ driveParseObjectE bufSize
                    -> return $ Right r
   where
     couldBeStreamObject (idx, gen) d
-        = do eR <- parseRepeatedly 16 parseStreamHeader
+        = do eR <- driveParse 16 parseStreamHeader
              case eR of
                  Left _
                      -> return $ Right $ (idx, gen, Dict d)

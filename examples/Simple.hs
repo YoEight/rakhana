@@ -16,10 +16,11 @@ import Data.Foldable (for_)
 
 --------------------------------------------------------------------------------
 import Control.Monad.Trans (liftIO)
+import Control.Monad.Trans.Except
 import Data.Rakhana
 
 --------------------------------------------------------------------------------
-playground :: Playground IO ()
+playground :: Playground (ExceptT NurseryException IO) ()
 playground
     = do header <- nurseryGetHeader
          info   <- nurseryGetInfo
@@ -37,4 +38,11 @@ playground
 
 --------------------------------------------------------------------------------
 main :: IO ()
-main = runDrive (fileTape "samples/IdiomLite.pdf") (withNursery playground)
+main = do rE <- runExceptT $
+                    runDrive
+                    (fileTape "samples/IdiomLite.pdf")
+                    (withNursery playground)
+
+          case rE of
+              Left e  -> print e
+              Right _ -> return ()

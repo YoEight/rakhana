@@ -1,3 +1,7 @@
+0.2.0.0
+-------
+* Migrate from MonadThrow to MonadError constraint
+
 0.1.0.1
 -------
 * Added Cross-reference Streams support

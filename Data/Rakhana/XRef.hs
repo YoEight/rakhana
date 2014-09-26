@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RankNTypes         #-}
@@ -36,13 +35,11 @@ import           Data.Foldable (traverse_)
 import qualified Data.Map.Strict       as M
 import           Data.Maybe (fromMaybe)
 import           Data.Word
-import           Data.Typeable
 
 --------------------------------------------------------------------------------
 import           Codec.Compression.Zlib
 import           Codec.Compression.Zlib.Internal
 import           Control.Lens
-import           Control.Monad.Catch (Exception, MonadThrow(..))
 import           Control.Monad.State.Strict
 import           Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString.Lazy as PL
@@ -149,10 +146,7 @@ data XRefException
     | UnsupportedFilter B.ByteString
     | UnsupportedPredictor Integer
     | ZLibException String String
-    deriving (Show, Typeable)
-
---------------------------------------------------------------------------------
-instance Exception XRefException
+    deriving Show
 
 --------------------------------------------------------------------------------
 data ExtractState
@@ -193,17 +187,21 @@ bufferSize :: Int
 bufferSize = 4096
 
 --------------------------------------------------------------------------------
-getXRefPos :: MonadThrow m => Drive m Integer
+getXRefPos :: Monad m => Drive m (Either XRefException Integer)
 getXRefPos
     = do driveBottom
          driveBackward
          skipEOL
-         parseEOF
-         skipEOL
-         p <- parseXRefPosInteger
-         skipEOL
-         parseStartXRef
-         return p
+         mE <- parseEOF
+         case mE of
+             Just e
+                 -> return $ Left e
+             Nothing
+                 -> do skipEOL
+                       p <- parseXRefPosInteger
+                       skipEOL
+                       mR <- parseStartXRef
+                       return $ maybe (Right p) Left mR
 
 --------------------------------------------------------------------------------
 getXRef :: Monad m => Header -> Integer -> Drive m (Either XRefException XRef)
@@ -223,7 +221,7 @@ crossRef pos
     = do driveTop
          driveForward
          driveSeek pos
-         eR <- parseRepeatedly bufferSize parseXRef
+         eR <- driveParse bufferSize parseXRef
          return $ either (Left . XRefParsingException) Right eR
 
 --------------------------------------------------------------------------------
@@ -289,7 +287,7 @@ parseXRefStream offset
     = do driveTop
          driveForward
          driveSeek offset
-         rE <- driveParseObjectE 128
+         rE <- driveParseObject 128
          case rE of
              Left e  -> return $ Left $ XRefParsingException e
              Right r ->
@@ -555,15 +553,15 @@ skipEOL
              _ -> return ()
 
 --------------------------------------------------------------------------------
-parseEOF :: MonadThrow m => Drive m ()
+parseEOF :: Monad m => Drive m (Maybe XRefException)
 parseEOF
     = do bs <- driveGet 5
          case bs of
-             "%%EOF" -> return ()
-             _       -> throwM $ XRefParsingException "Expected %%EOF"
+             "%%EOF" -> return Nothing
+             _       -> return $ Just $ XRefParsingException "Expected %%EOF"
 
 --------------------------------------------------------------------------------
-parseXRefPosInteger :: MonadThrow m => Drive m Integer
+parseXRefPosInteger :: Monad m => Drive m Integer
 parseXRefPosInteger = go []
   where
     go cs = do bs <- drivePeek 1
@@ -574,12 +572,13 @@ parseXRefPosInteger = go []
                    _ -> return $ read cs
 
 --------------------------------------------------------------------------------
-parseStartXRef :: MonadThrow m => Drive m ()
+parseStartXRef :: Monad m => Drive m (Maybe XRefException)
 parseStartXRef
     = do bs <- driveGet 9
          case bs of
-             "startxref" -> return ()
-             _           -> throwM $ XRefParsingException "Expected startxref"
+             "startxref" -> return Nothing
+             _           -> return $ Just  $
+                            XRefParsingException "Expected startxref"
 
 --------------------------------------------------------------------------------
 -- Parsers

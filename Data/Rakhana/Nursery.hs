@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RankNTypes         #-}
 --------------------------------------------------------------------------------
@@ -16,6 +17,8 @@ module Data.Rakhana.Nursery
     ( Playground
     , NReq
     , NResp
+    , NurseryException(..)
+    , XRefException(..)
     , nurseryGetInfo
     , nurseryGetHeader
     , nurseryGetPages
@@ -35,7 +38,7 @@ import           Data.Typeable hiding (Proxy)
 --------------------------------------------------------------------------------
 import           Codec.Compression.Zlib (decompress)
 import           Control.Lens
-import           Control.Monad.Catch
+import           Control.Monad.Error.Class
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import           Data.Attoparsec.ByteString.Char8
@@ -103,9 +106,6 @@ data ObjStm
     deriving Show
 
 --------------------------------------------------------------------------------
-instance Exception NurseryException
-
---------------------------------------------------------------------------------
 data NurseryState
     = NurseryState
       { nurseryHeader :: !Header
@@ -120,7 +120,7 @@ bufferSize :: Int
 bufferSize = 64
 
 --------------------------------------------------------------------------------
-nursery :: MonadCatch m => Nursery m a
+nursery :: MonadError NurseryException m => Nursery m a
 nursery
     = do h         <- getHeader
          initState <- regularPDFAccess h
@@ -135,16 +135,25 @@ nursery
     dispatch s RqReferences         = serveReferences s
 
 --------------------------------------------------------------------------------
-regularPDFAccess :: MonadThrow m => Header -> Nursery m NurseryState
+regularPDFAccess :: MonadError NurseryException m
+                 => Header
+                 -> Nursery m NurseryState
 regularPDFAccess h
-    = do pos   <- getXRefPos
-         xrefE <- getXRef h pos
-         case xrefE of
-             Left e     -> throwM $ NurseryXRefException e
-             Right xref -> nurseryState h xref
+    = do posE  <- getXRefPos
+         case posE of
+             Left e
+                 -> throwError $ NurseryXRefException e
+             Right pos
+                 -> do xrefE <- getXRef h pos
+                       case xrefE of
+                           Left e     -> throwError $ NurseryXRefException e
+                           Right xref -> nurseryState h xref
 
 --------------------------------------------------------------------------------
-nurseryState :: MonadThrow m => Header -> XRef -> Nursery m NurseryState
+nurseryState :: MonadError NurseryException m
+             => Header
+             -> XRef
+             -> Nursery m NurseryState
 nurseryState h xref
     = do info  <- getInfo xref
          root  <- getRoot xref
@@ -177,7 +186,7 @@ servePages s = return (RPages pages, s)
     pages = nurseryPages s
 
 --------------------------------------------------------------------------------
-serveResolve :: MonadThrow m
+serveResolve :: MonadError NurseryException m
              => NurseryState
              -> Reference
              -> Nursery m (NResp, NurseryState)
@@ -188,7 +197,7 @@ serveResolve s ref
     xref = nurseryXRef s
 
 --------------------------------------------------------------------------------
-serveLoadStream :: MonadThrow m
+serveLoadStream :: MonadError NurseryException m
                 => NurseryState
                 -> Stream
                 -> Nursery m (NResp, NurseryState)
@@ -199,7 +208,10 @@ serveLoadStream s stream
     xref = nurseryXRef s
 
 --------------------------------------------------------------------------------
-loadStream :: MonadThrow m => XRef -> Stream -> Nursery m BL.ByteString
+loadStream :: MonadError NurseryException m
+           => XRef
+           -> Stream
+           -> Nursery m BL.ByteString
 loadStream xref stream
     = do mLen <- dict ^!? dictKey "Length"
                       . act (resolveIfRef xref)
@@ -207,7 +219,7 @@ loadStream xref stream
                       . _Natural
          case mLen of
              Nothing
-                 -> throwM NurseryInvalidStreamObject
+                 -> throwError NurseryInvalidStreamObject
              Just len
                  -> do driveSeek pos
                        bs <- driveGetLazy $ fromIntegral len
@@ -229,11 +241,15 @@ serveReferences s
     rs = M.keys $ xrefUTable $ nurseryXRef s
 
 --------------------------------------------------------------------------------
-getHeader :: MonadThrow m => Nursery m Header
-getHeader = driveParse 8 parseHeader
+getHeader :: MonadError NurseryException m => Nursery m Header
+getHeader
+    = do hE <- driveParse 8 parseHeader
+         case hE of
+             Left e  -> throwError $ NurseryParsingException e
+             Right h -> return h
 
 --------------------------------------------------------------------------------
-getInfo :: MonadThrow m => XRef -> Nursery m Dictionary
+getInfo :: MonadError NurseryException m => XRef -> Nursery m Dictionary
 getInfo xref = perform action trailer
   where
     trailer = xrefTrailer xref
@@ -244,18 +260,18 @@ getInfo xref = perform action trailer
              . _Dict
 
 --------------------------------------------------------------------------------
-getRoot :: MonadThrow m => XRef -> Nursery m Root
+getRoot :: MonadError NurseryException m => XRef -> Nursery m Root
 getRoot xref
     = maybe (trailerRoot xref) (streamRoot xref) xstreamM
   where
     xstreamM = xrefStream xref
 
 --------------------------------------------------------------------------------
-trailerRoot :: MonadThrow m => XRef -> Nursery m Root
+trailerRoot :: MonadError NurseryException m => XRef -> Nursery m Root
 trailerRoot xref
     = do mR <- trailer ^!? action
          case mR of
-             Nothing -> throwM NurseryRootNotFound
+             Nothing -> throwError NurseryRootNotFound
              Just r  -> return r
   where
     trailer = xrefTrailer xref
@@ -267,11 +283,14 @@ trailerRoot xref
           . _Dict
 
 --------------------------------------------------------------------------------
-streamRoot :: MonadThrow m => XRef -> XRefStream -> Nursery m Root
+streamRoot :: MonadError NurseryException m
+           => XRef
+           -> XRefStream
+           -> Nursery m Root
 streamRoot xref xstream
     = do mR <- dict ^!? action
          case mR of
-             Nothing -> throwM NurseryRootNotFound
+             Nothing -> throwError NurseryRootNotFound
              Just r  -> return r
   where
     dict = xrefStreamDict xstream
@@ -283,11 +302,11 @@ streamRoot xref xstream
           . _Dict
 
 --------------------------------------------------------------------------------
-getPages :: MonadThrow m => XRef -> Root -> Nursery m Pages
+getPages :: MonadError NurseryException m => XRef -> Root -> Nursery m Pages
 getPages xref root
     = do mP <- root ^!? action
          case mP of
-             Nothing -> throwM NurseryPagesNotFound
+             Nothing -> throwError NurseryPagesNotFound
              Just p  -> return p
   where
     action
@@ -297,12 +316,18 @@ getPages xref root
           . _Dict
 
 --------------------------------------------------------------------------------
-resolveIfRef :: MonadThrow m => XRef -> Object -> Nursery m Object
+resolveIfRef :: MonadError NurseryException m
+             => XRef
+             -> Object
+             -> Nursery m Object
 resolveIfRef xref (Ref i g) = resolveObject xref (i,g)
 resolveIfRef _ obj          = return obj
 
 --------------------------------------------------------------------------------
-resolveObject :: MonadThrow m => XRef -> Reference -> Nursery m Object
+resolveObject :: MonadError NurseryException m
+              => XRef
+              -> Reference
+              -> Nursery m Object
 resolveObject xref ref
     = do driveTop
          driveForward
@@ -318,23 +343,23 @@ resolveObject xref ref
               Just e
                   -> do let offset = uObjOff e
                         driveSeek offset
-                        rE <- driveParseObjectE bufferSize
+                        rE <- driveParseObject bufferSize
                         case rE of
-                            Left e' -> throwM $ NurseryParsingException e'
+                            Left e' -> throwError $ NurseryParsingException e'
                             Right r ->
                                 case r ^. _3 of
                                     Ref nidx ngen -> loop (nidx,ngen)
                                     _             -> return $ r ^. _3
 
 --------------------------------------------------------------------------------
-resolveCompressedObject :: MonadThrow m
+resolveCompressedObject :: MonadError NurseryException m
                         => XRef
                         -> Reference
                         -> Nursery m Object
 resolveCompressedObject xref ref@(idx,gen)
     = case M.lookup ref centries of
           Nothing
-              -> throwM $ NurseryUnresolvedObject idx gen
+              -> throwError $ NurseryUnresolvedObject idx gen
           Just cObj
               -> let objsNum = cObjNum cObj
                      sRef    = (objsNum, 0) in
@@ -342,12 +367,12 @@ resolveCompressedObject xref ref@(idx,gen)
                     let mPos = sObj ^? _Stream
                     case mPos of
                         Nothing
-                            -> throwM NurseryExpectedStreamObject
+                            -> throwError NurseryExpectedStreamObject
                         Just stream
                             -> do bs <- loadStream xref stream
                                   case validateObjStm stream bs of
                                       Left e
-                                          -> throwM e
+                                          -> throwError e
                                       Right o
                                           -> lookupObjStm ref o
   where
@@ -396,17 +421,20 @@ validateObjStm stream bs
     pos  = stream ^. streamPos
 
 --------------------------------------------------------------------------------
-lookupObjStm :: MonadThrow m => Reference -> ObjStm -> Nursery m Object
+lookupObjStm :: MonadError NurseryException m
+             => Reference
+             -> ObjStm
+             -> Nursery m Object
 lookupObjStm (idx,_) stm
     = case M.lookup (fromIntegral idx) reg of
-          Nothing -> throwM $ NurseryUnresolvedObjectInObjStm idx
+          Nothing -> throwError $ NurseryUnresolvedObjectInObjStm idx
           Just off
               -> do let skipN   = fromIntegral (first+off)
                         stream' = BL.drop skipN stream
 
                     case PL.parse parser stream' of
                         PL.Fail _ _ e
-                            -> throwM $ NurseryParsingExceptionInObjStm e
+                            -> throwError $ NurseryParsingExceptionInObjStm e
                         PL.Done _ obj
                             -> return obj
   where
@@ -417,7 +445,9 @@ lookupObjStm (idx,_) stm
     first  = objStmFirst stm
 
 --------------------------------------------------------------------------------
-withNursery :: MonadCatch m => Client' NReq NResp m a -> Drive m a
+withNursery :: MonadError NurseryException m
+            => Client' NReq NResp m a
+            -> Drive m a
 withNursery user = nursery >>~ const user
 
 --------------------------------------------------------------------------------

@@ -18,12 +18,14 @@ module Data.Rakhana
     , NReq
     , NResp
     , Number
+    , NurseryException(..)
     , Playground
     , Reference
     , Stream
     , Tape
     , TReq
     , TResp
+    , XRefException(..)
     -- Prisms
     , _Array
     , _Boolean
