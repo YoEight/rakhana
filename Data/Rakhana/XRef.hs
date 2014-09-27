@@ -635,6 +635,8 @@ parseTableEntries firstNumber
              case mT of
                  Nothing -> return (ftable, utable)
                  Just (off, gen, used)
+                     | off == 0
+                       -> loop(i+1, ftable, utable)
                      | used
                        -> let key     = (i, gen)
                               obj     = UObj off gen

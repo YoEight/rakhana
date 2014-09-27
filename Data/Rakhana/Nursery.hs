@@ -55,7 +55,7 @@ import Data.Rakhana.XRef
 
 --------------------------------------------------------------------------------
 data NurseryException
-    = NurseryParsingException String
+    = NurseryParsingException (Maybe Reference) String
     | NurseryParsingExceptionInObjStm String
     | NurseryUnresolvedObject Int Int
     | NurseryRootNotFound
@@ -245,7 +245,7 @@ getHeader :: MonadError NurseryException m => Nursery m Header
 getHeader
     = do hE <- driveParse 8 parseHeader
          case hE of
-             Left e  -> throwError $ NurseryParsingException e
+             Left e  -> throwError $ NurseryParsingException Nothing e
              Right h -> return h
 
 --------------------------------------------------------------------------------
@@ -345,11 +345,13 @@ resolveObject xref ref
                         driveSeek offset
                         rE <- driveParseObject bufferSize
                         case rE of
-                            Left e' -> throwError $ NurseryParsingException e'
-                            Right r ->
-                                case r ^. _3 of
-                                    Ref nidx ngen -> loop (nidx,ngen)
-                                    _             -> return $ r ^. _3
+                            Left e'
+                                -> throwError $
+                                   NurseryParsingException (Just cRef) e'
+                            Right r
+                                -> case r ^. _3 of
+                                       Ref nidx ngen -> loop (nidx,ngen)
+                                       _             -> return $ r ^. _3
 
 --------------------------------------------------------------------------------
 resolveCompressedObject :: MonadError NurseryException m

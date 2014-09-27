@@ -1,3 +1,7 @@
+0.2.0.1
+-------
+* Bug fix: Discard incoherent XRef table entries with offset equal to 0
+
 0.2.0.0
 -------
 * Migrate from MonadThrow to MonadError constraint

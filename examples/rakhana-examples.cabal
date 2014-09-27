@@ -20,7 +20,7 @@ executable rakhana-examples
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.7 && <4.8
-                     , rakhana == 0.2.0.0
+                     , rakhana == 0.2.0.1
                      , mtl
                      , transformers
   -- hs-source-dirs:

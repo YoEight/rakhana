@@ -40,7 +40,7 @@ playground
 main :: IO ()
 main = do rE <- runExceptT $
                     runDrive
-                    (fileTape "samples/IdiomLite.pdf")
+                    (fileTape "../samples/IdiomLite.pdf")
                     (withNursery playground)
 
           case rE of
