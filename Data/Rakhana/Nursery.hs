@@ -41,6 +41,7 @@ import           Control.Lens
 import           Control.Monad.Error.Class
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
+import           Control.Monad.Trans.Except
 import           Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.ByteString.Lazy as PL
 import           Pipes
@@ -139,15 +140,8 @@ regularPDFAccess :: MonadError NurseryException m
                  => Header
                  -> Nursery m NurseryState
 regularPDFAccess h
-    = do posE  <- getXRefPos
-         case posE of
-             Left e
-                 -> throwError $ NurseryXRefException e
-             Right pos
-                 -> do xrefE <- getXRef h pos
-                       case xrefE of
-                           Left e     -> throwError $ NurseryXRefException e
-                           Right xref -> nurseryState h xref
+    = do pos <- hoist liftError getXRefPos
+         nurseryState h =<< hoist liftError (getXRef h pos)
 
 --------------------------------------------------------------------------------
 nurseryState :: MonadError NurseryException m
@@ -343,15 +337,15 @@ resolveObject xref ref
               Just e
                   -> do let offset = uObjOff e
                         driveSeek offset
-                        rE <- driveParseObject bufferSize
-                        case rE of
-                            Left e'
-                                -> throwError $
-                                   NurseryParsingException (Just cRef) e'
-                            Right r
-                                -> case r ^. _3 of
-                                       Ref nidx ngen -> loop (nidx,ngen)
-                                       _             -> return $ r ^. _3
+                        r <- parsing cRef
+
+                        case r ^. _3 of
+                            Ref nidx ngen -> loop (nidx,ngen)
+                            _             -> return $ r ^. _3
+
+    parsing cRef
+        = driveParseObject bufferSize >>=
+              either (throwError . NurseryParsingException (Just cRef)) return
 
 --------------------------------------------------------------------------------
 resolveCompressedObject :: MonadError NurseryException m
@@ -372,18 +366,18 @@ resolveCompressedObject xref ref@(idx,gen)
                             -> throwError NurseryExpectedStreamObject
                         Just stream
                             -> do bs <- loadStream xref stream
-                                  case validateObjStm stream bs of
-                                      Left e
-                                          -> throwError e
-                                      Right o
-                                          -> lookupObjStm ref o
+                                  o  <- validateObjStm stream bs
+                                  lookupObjStm ref o
   where
     centries = xrefCTable xref
 
 --------------------------------------------------------------------------------
-validateObjStm :: Stream -> BL.ByteString -> Either NurseryException ObjStm
+validateObjStm :: MonadError NurseryException m
+               => Stream
+               -> BL.ByteString
+               -> m ObjStm
 validateObjStm stream bs
-    = maybe (Left NurseryInvalidObjStm) Right action
+    = maybe (throwError NurseryInvalidObjStm) return action
   where
     action
         = do typ   <- dict ^? dictKey "Type" . _Name
@@ -429,7 +423,8 @@ lookupObjStm :: MonadError NurseryException m
              -> Nursery m Object
 lookupObjStm (idx,_) stm
     = case M.lookup (fromIntegral idx) reg of
-          Nothing -> throwError $ NurseryUnresolvedObjectInObjStm idx
+          Nothing
+              -> throwError $ NurseryUnresolvedObjectInObjStm idx
           Just off
               -> do let skipN   = fromIntegral (first+off)
                         stream' = BL.drop skipN stream
@@ -462,6 +457,14 @@ nurseryLoop k s rq
     = do (r, s') <- k s rq
          rq'     <- respond r
          nurseryLoop k s' rq'
+
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
+liftError :: MonadError NurseryException m => ExceptT XRefException m a -> m a
+liftError action
+    = runExceptT action >>=
+          either (throwError . NurseryXRefException) return
 
 --------------------------------------------------------------------------------
 -- API

@@ -40,12 +40,11 @@ import           Data.Word
 import           Codec.Compression.Zlib
 import           Codec.Compression.Zlib.Internal
 import           Control.Lens
+import           Control.Monad.Error.Class
 import           Control.Monad.State.Strict
-import           Control.Monad.Trans.Except
 import           Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString.Lazy as PL
 import           Data.Attoparsec.ByteString.Char8
-import           Pipes.Safe ()
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Parsers
@@ -168,12 +167,20 @@ data UnpredictState
       }
 
 --------------------------------------------------------------------------------
-data NopredictState
-    = NopredictState
-      { _nopredictId     :: !Int
-      , _nopredictUTable :: !UTable
-      , _nopredictFTable :: !FTable
-      , _nopredictCTable :: !CTable
+data NoUnpredictState
+    = NoUnpredictState
+      { _noUnpredictId     :: !Int
+      , _noUnpredictUTable :: !UTable
+      , _noUnpredictFTable :: !FTable
+      , _noUnpredictCTable :: !CTable
+      }
+
+--------------------------------------------------------------------------------
+data EntriesParse
+    = EntriesParse
+      { _entriesParseId     :: !Int
+      , _entriesParseFTable :: !FTable
+      , _entriesParseUTable :: !UTable
       }
 
 --------------------------------------------------------------------------------
@@ -181,143 +188,122 @@ data NopredictState
 --------------------------------------------------------------------------------
 makeLenses ''ExtractState
 makeLenses ''UnpredictState
-makeLenses ''NopredictState
+makeLenses ''NoUnpredictState
+makeLenses ''EntriesParse
 
 --------------------------------------------------------------------------------
 bufferSize :: Int
 bufferSize = 4096
 
 --------------------------------------------------------------------------------
-getXRefPos :: Monad m => Drive m (Either XRefException Integer)
+getXRefPos :: MonadError XRefException m => Drive m Integer
 getXRefPos
     = do driveBottom
          driveBackward
          skipEOL
-         mE <- parseEOF
-         case mE of
-             Just e
-                 -> return $ Left e
-             Nothing
-                 -> do skipEOL
-                       p <- parseXRefPosInteger
-                       skipEOL
-                       mR <- parseStartXRef
-                       return $ maybe (Right p) Left mR
+         parseEOF
+         skipEOL
+         p <- parseXRefPosInteger
+         skipEOL
+         parseStartXRef
+         return p
 
 --------------------------------------------------------------------------------
-getXRef :: Monad m => Header -> Integer -> Drive m (Either XRefException XRef)
+getXRef :: MonadError XRefException m => Header -> Integer -> Drive m XRef
 getXRef h pos
-    = do rE <- normalXRef pos
-         case rE of
-             Left e
-                 | headerMaj h == 1 && headerMin h < 5
-                   -> return $ Left e
-                 | otherwise
-                   -> streamXRef pos
-             _ -> return rE
-
---------------------------------------------------------------------------------
-normalXRef :: Monad m => Integer -> Drive m (Either XRefException XRef)
-normalXRef pos
     = do driveTop
          driveForward
-         driveSeek pos
 
-         runExceptT $
-             do xref <- parsing
-                let dict  = xrefTrailer xref
-                    mPrev = dict ^? dictKey "Prev" . _Number . _Natural
-
-                case mPrev of
-                    Nothing
-                        -> return xref
-                    Just prev
-                        -> do xrefPrev <- ExceptT $ normalXRef prev
-                              let nUTable
-                                      = M.union (xrefUTable xref)
-                                        (xrefUTable xrefPrev)
-
-                                  newXRef
-                                      = xref { xrefUTable = nUTable }
-
-                              return newXRef
-
-  where
-    parsing
-        = withExceptT
-          XRefParsingException
-          (ExceptT $ driveParse bufferSize parseXRef)
+         catchError (normalXRef pos) $ \e ->
+             if headerMaj h == 1 && headerMin h < 5
+             then throwError e
+             else streamXRef pos
 
 --------------------------------------------------------------------------------
-streamXRef :: Monad m => Integer -> Drive m (Either XRefException XRef)
+normalXRef :: MonadError XRefException m => Integer -> Drive m XRef
+normalXRef pos
+    = do driveSeek pos
+         xref <- parsing
+         let dict  = xrefTrailer xref
+             mPrev = dict ^? dictKey "Prev" . _Number . _Natural
+
+         case mPrev of
+             Nothing
+                 -> return xref
+             Just prev
+                 -> do xrefPrev <- normalXRef prev
+                       let nUTable
+                               = M.union (xrefUTable xref)
+                                 (xrefUTable xrefPrev)
+
+                           newXRef
+                               = xref { xrefUTable = nUTable }
+
+                       return newXRef
+  where
+    parsing
+        = driveParse bufferSize parseXRef >>=
+              either (throwError . XRefParsingException) return
+
+--------------------------------------------------------------------------------
+streamXRef :: MonadError XRefException m => Integer -> Drive m XRef
 streamXRef offset = loop (offset, Nothing)
   where
     loop (off, newerRefM)
-        = do xrefE <- crossRefStreamStep off
-             case xrefE of
-                 Left e -> return $ Left e
-                 Right xref
-                     -> let prevM = xrefStream xref >>= xrefStreamPrev
-                            upd nRef
-                                = let nUTable
-                                          = M.union (xrefUTable nRef)
-                                            (xrefUTable xref)
-                                      nCTable
-                                          = M.union (xrefCTable nRef)
-                                            (xrefCTable xref) in
+        = do xref <- streamXRefStep off
+             let prevXRefPos = xrefStream xref >>= xrefStreamPrev
+                 updateXRef nRef
+                     = let nUTable
+                               = M.union (xrefUTable nRef)
+                                 (xrefUTable xref)
+                           nCTable
+                               = M.union (xrefCTable nRef)
+                                 (xrefCTable xref) in
 
-                                  nRef { xrefUTable = nUTable
-                                       , xrefCTable = nCTable
-                                       } in
-                        case prevM of
-                            Nothing ->
-                                let updRef = maybe xref upd newerRefM in
-                                return $ Right updRef
-                            Just prev
-                                -> do xrefE' <- loop (prev, Just xref)
-                                      case xrefE' of
-                                          Left e'
-                                              -> return $ Left e'
-                                          Right xref'
-                                              -> let updRef = maybe xref' upd
-                                                              newerRefM
-                                                 in return $ Right updRef
+                       nRef { xrefUTable = nUTable
+                            , xrefCTable = nCTable
+                            }
+
+             case prevXRefPos of
+                 Nothing
+                     -> return $ maybe xref updateXRef newerRefM
+                 Just prev
+                     -> loop (prev, Just xref) >>= \xref' ->
+                            return $ maybe xref' updateXRef newerRefM
 
 --------------------------------------------------------------------------------
-crossRefStreamStep :: Monad m => Integer -> Drive m (Either XRefException XRef)
-crossRefStreamStep offset
-    = do streamE <- parseXRefStream offset
-         let xstreamE = streamE >>= validateXRefStream
-         case xstreamE of
-             Left e -> return $ Left e
-             Right xstream
-                 -> do let len  = xrefStreamLength xstream
-                           filt = xrefStreamFilter xstream
-                           pos  = xrefStreamPos xstream
-                       driveSeek pos
-                       bs <- driveGetLazy len
-                       let dbsE   = decodeBS filt bs
-                           dparms = xrefStreamDecodeParms xstream
-                           mPred  = fmap decodeParmsPredictor dparms
-                           res =
-                               case mPred of
-                                   Nothing  -> dbsE >>= noPredict xstream
-                                   Just prd -> dbsE >>= unpredict prd xstream
-                       return res
+streamXRefStep :: MonadError XRefException m => Integer -> Drive m XRef
+streamXRefStep offset
+    = do stream  <- parseXRefStream offset
+         xstream <- validateXRefStream stream
+         let len    = xrefStreamLength xstream
+             filt   = xrefStreamFilter xstream
+             pos    = xrefStreamPos xstream
+             dparms = xrefStreamDecodeParms xstream
+             mPred  = fmap decodeParmsPredictor dparms
+
+         driveSeek pos
+         bs  <- driveGetLazy len
+         dbs <- decodeByteString filt bs
+
+         case mPred of
+             Nothing  -> noUnpredict xstream dbs
+             Just prd -> unpredict prd xstream dbs
 
 --------------------------------------------------------------------------------
-parseXRefStream :: Monad m => Integer -> Drive m (Either XRefException Stream)
+parseXRefStream :: MonadError XRefException m => Integer -> Drive m Stream
 parseXRefStream offset
-    = do driveTop
-         driveForward
-         driveSeek offset
-         rE <- driveParseObject 128
-         case rE of
-             Left e  -> return $ Left $ XRefParsingException e
-             Right r ->
-                 let xstream = r ^. _3
-                     expt    = XRefParsingException "Expected a XRef Stream" in
-                 return $ maybe (Left $ expt) Right (xstream ^? _Stream)
+    = do driveSeek offset
+         (_,_,obj) <- parsing
+
+         maybe
+             (throwError $ XRefParsingException "Expected a XRef Stream")
+             return
+             (obj ^? _Stream)
+  where
+    parsing
+        = driveParseObject 128 >>=
+              either (throwError . XRefParsingException) return
 
 --------------------------------------------------------------------------------
 getFilter :: Dictionary -> Maybe Filter
@@ -348,57 +334,62 @@ decompressErrorStr DictionaryRequired = "DictionaryRequired"
 decompressErrorStr DataError          = "DataError"
 
 --------------------------------------------------------------------------------
-zlibDecompress :: L.ByteString -> Either XRefException L.ByteString
+zlibDecompress :: MonadError XRefException m => L.ByteString -> m L.ByteString
 zlibDecompress bs
-    = foldDecompressStream go (Right L.Empty)
-      (\code msg -> Left $ ZLibException (decompressErrorStr code) msg) $
-      decompressWithErrors zlibFormat defaultDecompressParams bs
-  where
-    go b aE = fmap (\b' -> L.Chunk b b') aE
+    = foldDecompressStream (liftM . L.Chunk) (return L.Empty)
+      (\code -> throwError . ZLibException (decompressErrorStr code))
+      (decompressWithErrors zlibFormat defaultDecompressParams bs)
 
 --------------------------------------------------------------------------------
-decodeBS :: Maybe Filter -> L.ByteString -> Either XRefException L.ByteString
-decodeBS (Just filt) bs
+decodeByteString :: MonadError XRefException m
+                 => Maybe Filter
+                 -> L.ByteString
+                 -> m L.ByteString
+decodeByteString (Just filt) bs
     = case filt of
            FlateDecode          -> zlibDecompress bs
-           Filter_Unsupported x -> Left $ UnsupportedFilter x
-decodeBS _  bs
-    = Right bs
+           Filter_Unsupported x -> throwError $ UnsupportedFilter x
+decodeByteString _ bs
+    = return bs
 
 --------------------------------------------------------------------------------
-unpredict :: Predictor
+unpredict :: MonadError XRefException m
+          => Predictor
           -> XRefStream
           -> L.ByteString
-          -> Either XRefException XRef
+          -> m XRef
 unpredict p xstream input
     = case p of
           Png_Up                  -> unpredictPngUp xstream input
-          Predictor_Unsupported x -> Left $ UnsupportedPredictor x
+          Predictor_Unsupported x -> throwError $ UnsupportedPredictor x
 
 --------------------------------------------------------------------------------
-noPredict :: XRefStream -> L.ByteString -> Either XRefException XRef
-noPredict xstream input
+noUnpredict :: MonadError XRefException m
+            => XRefStream
+            -> L.ByteString
+            -> m XRef
+noUnpredict xstream input
     = case PL.parse parser input of
-          PL.Fail _ _ e -> Left $ XRefParsingException e
-          PL.Done _ bs  -> Right bs
+          PL.Fail _ _ e -> throwError $ XRefParsingException e
+          PL.Done _ bs  -> return bs
   where
     width       = fromIntegral $ xrefStreamEntryWidth xstream
     firstNumber = fromIntegral $ xrefStreamFirstNumber xstream
     ecount      = fromIntegral $ xrefStreamEntryCount xstream
-    start       = NopredictState
-                  { _nopredictId     = firstNumber - 1
-                  , _nopredictUTable = M.empty
-                  , _nopredictFTable = M.empty
-                  , _nopredictCTable = M.empty
+    start       = NoUnpredictState
+                  { _noUnpredictId     = firstNumber - 1
+                  , _noUnpredictUTable = M.empty
+                  , _noUnpredictFTable = M.empty
+                  , _noUnpredictCTable = M.empty
                   }
 
     parser = evalStateT aState start
 
 
     aState = do replicateM_ ecount action
-                utable <- use nopredictUTable
-                ftable <- use nopredictFTable
-                ctable <- use nopredictCTable
+                utable <- use noUnpredictUTable
+                ftable <- use noUnpredictFTable
+                ctable <- use noUnpredictCTable
 
                 return XRef
                        { xrefFirstNumber = firstNumber
@@ -411,35 +402,39 @@ noPredict xstream input
                        }
 
     action
-        = do oid <- nopredictId <+= 1
+        = do oid <- noUnpredictId <+= 1
              row <- lift step
+             (typ, off, gen) <- either fail return
+                                (extractTableEntry xstream row)
 
-             let (typ, off, gen) = extractTableEntry xstream row
-                 ref  = (oid,gen)
+             let ref  = (oid,gen)
                  cref = (oid, 0)
                  fobj = FObj (fromIntegral off) gen
                  uobj = UObj off gen
                  cobj = CObj (fromIntegral off) (fromIntegral gen)
 
              case typ of
-                 Free       -> nopredictFTable.at ref  ?= fobj
-                 Used       -> nopredictUTable.at ref  ?= uobj
-                 Compressed -> nopredictCTable.at cref ?= cobj
+                 Free       -> noUnpredictFTable.at ref  ?= fobj
+                 Used       -> noUnpredictUTable.at ref  ?= uobj
+                 Compressed -> noUnpredictCTable.at cref ?= cobj
 
     step = do bs <- take width
               let row = B.unpack bs
               return row
 
 --------------------------------------------------------------------------------
-unpredictPngUp :: XRefStream -> L.ByteString -> Either XRefException XRef
+unpredictPngUp :: MonadError XRefException m
+               => XRefStream
+               -> L.ByteString
+               -> m XRef
 unpredictPngUp xstream input
     = case PL.parse parser input of
-          PL.Fail _ _ e -> Left $ XRefParsingException e
-          PL.Done _ bs  -> Right bs
+          PL.Fail _ _ e -> throwError $ XRefParsingException e
+          PL.Done _ bs  -> return bs
   where
     width       = fromIntegral $ xrefStreamEntryWidth xstream
     firstNumber = fromIntegral $ xrefStreamFirstNumber xstream
-    ecount       = fromIntegral $ xrefStreamEntryCount xstream
+    ecount      = fromIntegral $ xrefStreamEntryCount xstream
     start       = UnpredictState
                   { _unpredictPrev   = replicate width 0
                   , _unpredictId     = firstNumber - 1
@@ -470,9 +465,10 @@ unpredictPngUp xstream input
              oid     <- unpredictId <+= 1
 
              unpredictPrev .= newPrev
+             (typ, off, gen) <- either fail return
+                                (extractTableEntry xstream newPrev)
 
-             let (typ, off, gen) = extractTableEntry xstream newPrev
-                 ref  = (oid, gen)
+             let ref  = (oid, gen)
                  cref = (oid, 0)
                  fobj = FObj (fromIntegral off) gen
                  uobj = UObj off gen
@@ -490,10 +486,14 @@ unpredictPngUp xstream input
              return newPrev
 
 --------------------------------------------------------------------------------
-extractTableEntry :: XRefStream -> [Word8] -> (ObjType, Integer, Int)
+extractTableEntry :: XRefStream
+                  -> [Word8]
+                  -> Either String (ObjType, Integer, Int)
 extractTableEntry xstream arr
-    = mkEntry $ execState (traverse_ action $ zip [1..width] arr) start
+    = fmap mkEntry $ execStateT action start
   where
+    action = traverse_ step $ zip [1..width] arr
+
     start = ExtractState Free 0 0
 
     mkEntry s
@@ -502,13 +502,13 @@ extractTableEntry xstream arr
               typ = s ^. extractType in
           (typ, off, gen)
 
-    action (i,w)
+    step (i,w)
         | i == 1
           = case w of
               0x00 -> extractType .= Free
               0x01 -> extractType .= Used
               0x02 -> extractType .= Compressed
-              _    -> error $ "Invalid entry type " ++ show w
+              _    -> lift $ Left $ "Invalid entry type " ++ show w
         | i <= oLen+1
           = extractOffset += (fromIntegral w) `shiftL` (8*(oLen-i+1))
         | i <= oLen+gLen+1
@@ -522,9 +522,9 @@ extractTableEntry xstream arr
     width     = fromIntegral $ xrefStreamEntryWidth xstream
 
 --------------------------------------------------------------------------------
-validateXRefStream :: Stream -> Either XRefException XRefStream
+validateXRefStream :: MonadError XRefException m => Stream -> m XRefStream
 validateXRefStream s
-    = maybe (Left InvalidXRefStream) Right action
+    = maybe (throwError InvalidXRefStream) return action
   where
     action
         = do typ          <- dict ^? dictKey "Type" . _Name
@@ -577,12 +577,12 @@ skipEOL
              _ -> return ()
 
 --------------------------------------------------------------------------------
-parseEOF :: Monad m => Drive m (Maybe XRefException)
+parseEOF :: MonadError XRefException m => Drive m ()
 parseEOF
     = do bs <- driveGet 5
          case bs of
-             "%%EOF" -> return Nothing
-             _       -> return $ Just $ XRefParsingException "Expected %%EOF"
+             "%%EOF" -> return ()
+             _       -> throwError $ XRefParsingException "Expected %%EOF"
 
 --------------------------------------------------------------------------------
 parseXRefPosInteger :: Monad m => Drive m Integer
@@ -596,12 +596,12 @@ parseXRefPosInteger = go []
                    _ -> return $ read cs
 
 --------------------------------------------------------------------------------
-parseStartXRef :: Monad m => Drive m (Maybe XRefException)
+parseStartXRef :: MonadError XRefException m => Drive m ()
 parseStartXRef
     = do bs <- driveGet 9
          case bs of
-             "startxref" -> return Nothing
-             _           -> return $ Just  $
+             "startxref" -> return ()
+             _           -> throwError $
                             XRefParsingException "Expected startxref"
 
 --------------------------------------------------------------------------------
@@ -618,7 +618,7 @@ parseXRef
     = do skipSpace
          tableXRef
          (fnum, ecount)   <- parseSubsectionHeader
-         (ftable, utable) <- parseTableEntries fnum
+         (ftable, utable) <- parseTableEntries fnum ecount
          trailer          <- parseTrailerAfterTable
          return XRef
                 { xrefFirstNumber = fnum
@@ -650,30 +650,29 @@ parseTrailerAfterTable
          return d
 
 --------------------------------------------------------------------------------
-parseTableEntries :: Int -> Parser (FTable, UTable)
-parseTableEntries firstNumber
-    = loop start
+parseTableEntries :: Int -> Int -> Parser (FTable, UTable)
+parseTableEntries firstNumber n
+    = parser
   where
-    loop (i, ftable, utable)
-        = do mT <- optional parseTableEntry
-             case mT of
-                 Nothing -> return (ftable, utable)
-                 Just (off, gen, used)
-                     | off == 0
-                       -> loop(i+1, ftable, utable)
-                     | used
-                       -> let key     = (i, gen)
-                              obj     = UObj off gen
-                              utable' = M.insert key obj utable in
-                          loop (i+1, ftable, utable')
-                     | otherwise
-                       -> let key     = (i, gen)
-                              obj     = FObj (fromIntegral off) gen
-                              ftable' = M.insert key obj ftable in
-                          loop (i+1, ftable', utable)
+    parser = fmap end $ execStateT action start
+    action = replicateM_ n step
 
-    start :: (Int, FTable, UTable)
-    start = (firstNumber, M.empty, M.empty)
+    step = do (off, gen, used) <- lift parseTableEntry
+              eid              <- entriesParseId <+= 1
+              let key = (eid, gen)
+              when (off /= 0) $
+                  if used
+                  then entriesParseUTable.at key ?= UObj off gen
+                  else let nxt = fromIntegral off in
+                       entriesParseFTable.at key ?= FObj nxt gen
+
+    start = EntriesParse
+            { _entriesParseId     = firstNumber - 1
+            , _entriesParseFTable = M.empty
+            , _entriesParseUTable = M.empty
+            }
+
+    end s = (s ^. entriesParseFTable, s ^.  entriesParseUTable)
 
 --------------------------------------------------------------------------------
 parseTableEntry :: Parser (Integer, Int, Bool)

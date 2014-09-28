@@ -1,5 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE RankNTypes #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module : Data.Rakhana.Util.Drive
@@ -15,13 +14,10 @@ module Data.Rakhana.Util.Drive where
 
 --------------------------------------------------------------------------------
 import qualified Data.ByteString as B
-import           Data.Typeable
 
 --------------------------------------------------------------------------------
-import Control.Exception
 import Control.Lens
 import Data.Attoparsec.ByteString
-import Pipes.Safe ()
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Parsers
@@ -29,10 +25,7 @@ import Data.Rakhana.Internal.Types
 import Data.Rakhana.Tape
 
 --------------------------------------------------------------------------------
-data ParsingException = ParsingException String deriving (Show, Typeable)
-
---------------------------------------------------------------------------------
-instance Exception ParsingException
+data ParsingException = ParsingException String deriving Show
 
 --------------------------------------------------------------------------------
 driveParse :: Monad m => Int -> Parser a -> Drive m (Either String a)

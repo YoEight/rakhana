@@ -79,7 +79,6 @@ library
                      , lens         == 4.4.*
                      , mtl
                      , pipes        == 4.*
-                     , pipes-safe   > 2 && < 3
                      , scientific
                      , transformers == 0.4.*
                      , vector       >= 0.10 && < 0.11
