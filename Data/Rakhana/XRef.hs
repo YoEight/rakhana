@@ -41,6 +41,7 @@ import           Codec.Compression.Zlib
 import           Codec.Compression.Zlib.Internal
 import           Control.Lens
 import           Control.Monad.State.Strict
+import           Control.Monad.Trans.Except
 import           Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString.Lazy as PL
 import           Data.Attoparsec.ByteString.Char8
@@ -206,27 +207,50 @@ getXRefPos
 --------------------------------------------------------------------------------
 getXRef :: Monad m => Header -> Integer -> Drive m (Either XRefException XRef)
 getXRef h pos
-    = do rE <- crossRef pos
+    = do rE <- normalXRef pos
          case rE of
              Left e
                  | headerMaj h == 1 && headerMin h < 5
                    -> return $ Left e
                  | otherwise
-                   -> crossRefStream pos
+                   -> streamXRef pos
              _ -> return rE
 
 --------------------------------------------------------------------------------
-crossRef :: Monad m => Integer -> Drive m (Either XRefException XRef)
-crossRef pos
+normalXRef :: Monad m => Integer -> Drive m (Either XRefException XRef)
+normalXRef pos
     = do driveTop
          driveForward
          driveSeek pos
-         eR <- driveParse bufferSize parseXRef
-         return $ either (Left . XRefParsingException) Right eR
+
+         runExceptT $
+             do xref <- parsing
+                let dict  = xrefTrailer xref
+                    mPrev = dict ^? dictKey "Prev" . _Number . _Natural
+
+                case mPrev of
+                    Nothing
+                        -> return xref
+                    Just prev
+                        -> do xrefPrev <- ExceptT $ normalXRef prev
+                              let nUTable
+                                      = M.union (xrefUTable xref)
+                                        (xrefUTable xrefPrev)
+
+                                  newXRef
+                                      = xref { xrefUTable = nUTable }
+
+                              return newXRef
+
+  where
+    parsing
+        = withExceptT
+          XRefParsingException
+          (ExceptT $ driveParse bufferSize parseXRef)
 
 --------------------------------------------------------------------------------
-crossRefStream :: Monad m => Integer -> Drive m (Either XRefException XRef)
-crossRefStream offset = loop (offset, Nothing)
+streamXRef :: Monad m => Integer -> Drive m (Either XRefException XRef)
+streamXRef offset = loop (offset, Nothing)
   where
     loop (off, newerRefM)
         = do xrefE <- crossRefStreamStep off
