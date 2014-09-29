@@ -67,6 +67,7 @@ data NurseryException
     | NurseryExpectedStreamObject
     | NurseryInvalidObjStm
     | NurseryUnresolvedObjectInObjStm Int
+    | NurseryWrongObject Reference Reference
     deriving (Show, Typeable)
 
 --------------------------------------------------------------------------------
@@ -338,6 +339,10 @@ resolveObject xref ref
                   -> do let offset = uObjOff e
                         driveSeek offset
                         r <- parsing cRef
+
+                        let pRef = (r ^. _1, r ^. _2)
+                        when (cRef /= pRef) $
+                            throwError $ NurseryWrongObject cRef pRef
 
                         case r ^. _3 of
                             Ref nidx ngen -> loop (nidx,ngen)

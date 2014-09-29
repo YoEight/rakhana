@@ -75,6 +75,10 @@ parseName :: Parser Object
 parseName = fmap Name parseNameString
 
 --------------------------------------------------------------------------------
+parseNull :: Parser Object
+parseNull = Null <$ string "null"
+
+--------------------------------------------------------------------------------
 parseNumber :: Parser Object
 parseNumber = regularNumber <|> irregularNumber
   where
@@ -183,7 +187,8 @@ parseObject = skipSpace >> go
          parseRef         <|>
          parseHexBytes    <|>
          parseStringBytes <|>
-         parseNumber
+         parseNumber      <|>
+         parseNull
 
 --------------------------------------------------------------------------------
 parseStreamHeader :: Parser ()
