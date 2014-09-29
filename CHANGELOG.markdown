@@ -1,3 +1,8 @@
+0.2.0.2
+-------
+* Bug fix: Fix PDF literal parser
+* Strengthen object resolution
+
 0.2.0.1
 -------
 * Bug fix: Discard incoherent XRef table entries with offset equal to 0
