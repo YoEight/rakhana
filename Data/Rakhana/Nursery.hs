@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RankNTypes         #-}
@@ -15,6 +14,8 @@
 --------------------------------------------------------------------------------
 module Data.Rakhana.Nursery
     ( Playground
+    , Pages
+    , Root
     , NReq
     , NResp
     , NurseryException(..)
@@ -34,7 +35,6 @@ import           Control.Applicative
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict      as M
 import qualified Data.Set             as S
-import           Data.Typeable hiding (Proxy)
 
 --------------------------------------------------------------------------------
 import           Codec.Compression.Zlib (decompress)
@@ -70,7 +70,7 @@ data NurseryException
     | NurseryUnresolvedObjectInObjStm Int
     | NurseryWrongObject Reference Reference
     | NurseryCyclicDependency Reference
-    deriving (Show, Typeable)
+    deriving Show
 
 --------------------------------------------------------------------------------
 type Nursery m a = Proxy TReq TResp NReq NResp m a

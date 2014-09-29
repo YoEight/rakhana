@@ -11,7 +11,8 @@
 --
 --------------------------------------------------------------------------------
 module Data.Rakhana
-    ( Dictionary
+    ( module Data.Rakhana.Content.Page
+    , Dictionary
     , Drive
     , Header
     , Object
@@ -19,8 +20,10 @@ module Data.Rakhana
     , NResp
     , Number
     , NurseryException(..)
+    , Pages
     , Playground
     , Reference
+    , Root
     , Stream
     , Tape
     , TReq
@@ -68,6 +71,7 @@ module Data.Rakhana
     where
 
 --------------------------------------------------------------------------------
+import Data.Rakhana.Content.Page
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Tape
 import Data.Rakhana.Nursery

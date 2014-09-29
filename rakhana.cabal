@@ -10,7 +10,7 @@ name:                rakhana
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.2.0.2
+version:             0.3.0.0
 
 -- A short (one-line) description of the package.
 synopsis: Stream based PDF library
@@ -58,7 +58,8 @@ library
   exposed-modules: Data.Rakhana
 
   -- Modules included in this library but not exported.
-  other-modules: Data.Rakhana.Internal.Parsers
+  other-modules: Data.Rakhana.Content.Page
+                 Data.Rakhana.Internal.Parsers
                  Data.Rakhana.Internal.Types
                  Data.Rakhana.Nursery
                  Data.Rakhana.Tape
