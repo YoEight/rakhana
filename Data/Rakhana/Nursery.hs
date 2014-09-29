@@ -33,6 +33,7 @@ import           Prelude hiding (take, takeWhile)
 import           Control.Applicative
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict      as M
+import qualified Data.Set             as S
 import           Data.Typeable hiding (Proxy)
 
 --------------------------------------------------------------------------------
@@ -68,6 +69,7 @@ data NurseryException
     | NurseryInvalidObjStm
     | NurseryUnresolvedObjectInObjStm Int
     | NurseryWrongObject Reference Reference
+    | NurseryCyclicDependency Reference
     deriving (Show, Typeable)
 
 --------------------------------------------------------------------------------
@@ -326,12 +328,12 @@ resolveObject :: MonadError NurseryException m
 resolveObject xref ref
     = do driveTop
          driveForward
-         loop ref
+         loop (S.singleton ref) ref
   where
 
     entries = xrefUTable xref
 
-    loop cRef
+    loop visited cRef
         = case M.lookup cRef entries of
               Nothing
                   -> resolveCompressedObject xref ref
@@ -345,8 +347,15 @@ resolveObject xref ref
                             throwError $ NurseryWrongObject cRef pRef
 
                         case r ^. _3 of
-                            Ref nidx ngen -> loop (nidx,ngen)
-                            _             -> return $ r ^. _3
+                            Ref nidx ngen
+                                | S.member (nidx,ngen) visited
+                                  -> throwError $
+                                     NurseryCyclicDependency (nidx,ngen)
+                                | otherwise
+                                  -> let nRef     = (nidx,ngen)
+                                         nVisited = S.insert nRef visited in
+                                     loop nVisited nRef
+                            obj -> return obj
 
     parsing cRef
         = driveParseObject bufferSize >>=
