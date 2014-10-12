@@ -31,6 +31,8 @@ import           Control.Lens
 import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
+import Data.Rakhana.Content.Expr
+import Data.Rakhana.Content.Operator
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Nursery
 

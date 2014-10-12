@@ -191,6 +191,19 @@ parseObject = skipSpace >> go
          parseNull
 
 --------------------------------------------------------------------------------
+parseContentObject :: Parser Object
+parseContentObject = skipSpace >> go
+  where
+    go = parseName        <|>
+         parseDict        <|>
+         parseBoolean     <|>
+         parseArray       <|>
+         parseHexBytes    <|>
+         parseStringBytes <|>
+         parseNumber      <|>
+         parseNull
+
+--------------------------------------------------------------------------------
 parseStreamHeader :: Parser ()
 parseStreamHeader
     = do skipSpace

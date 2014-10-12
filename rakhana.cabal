@@ -58,7 +58,8 @@ library
   exposed-modules: Data.Rakhana
 
   -- Modules included in this library but not exported.
-  other-modules: Data.Rakhana.Content.Page
+  other-modules: Data.Rakhana.Content.Operator
+                 Data.Rakhana.Content.Page
                  Data.Rakhana.Internal.Parsers
                  Data.Rakhana.Internal.Types
                  Data.Rakhana.Nursery
