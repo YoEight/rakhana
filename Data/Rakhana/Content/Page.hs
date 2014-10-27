@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RankNTypes         #-}
 --------------------------------------------------------------------------------
@@ -18,21 +19,30 @@ module Data.Rakhana.Content.Page
     , lookupPage
     , pageContent
     , pageDictionary
+    , contentExtractText
     ) where
 
 --------------------------------------------------------------------------------
-import Prelude hiding (sequence)
-import Control.Applicative
-import Data.Maybe
-import Data.Traversable (sequence)
+import           Prelude hiding (sequence)
+import           Control.Applicative
+import           Data.ByteString.Builder
+import qualified Data.ByteString.Lazy as L
+import           Data.Foldable (for_)
+import           Data.Maybe
+import           Data.Monoid ((<>), mempty)
+import           Data.Traversable (sequence)
 
 --------------------------------------------------------------------------------
+import           Control.Monad.State hiding (sequence)
 import           Control.Lens
 import qualified Data.Vector as V
+import           Pipes
+import           Pipes.Prelude (toListM)
 
 --------------------------------------------------------------------------------
 import Data.Rakhana.Content.Expr
 import Data.Rakhana.Content.Operator
+import Data.Rakhana.Content.Parsers
 import Data.Rakhana.Internal.Types
 import Data.Rakhana.Nursery
 
@@ -80,6 +90,68 @@ lookupPage pageNum
              else fmap (fmap Page) $ lookupPage_ pageNum 0 pages
   where
     pageNum_integer = fromIntegral pageNum
+
+--------------------------------------------------------------------------------
+contentExtractText :: Monad m => Content -> Playground m L.ByteString
+contentExtractText (ContentStream s)
+    = do bytes <- nurseryLoadStreamData s
+         let effect = exprs bytes >-> operators >-> textExtractor
+             action = runEffect effect
+         res <- execStateT action mempty
+         return $ toLazyByteString res
+contentExtractText _
+    = return ""
+
+--------------------------------------------------------------------------------
+operators :: Monad m => Pipe Expr Operator m r
+operators = go []
+  where
+    go stack
+        = do expr <- await
+             case expr of
+                 Obj obj
+                     -> go (obj:stack)
+                 Op op
+                     -> let oper = Operator
+                                   { operatorOp       = op
+                                   , operatorOperands = reverse stack
+                                   } in
+                        yield oper >> go []
+
+--------------------------------------------------------------------------------
+textExtractor :: MonadState Builder m => Consumer' Operator m ()
+textExtractor = for cat go
+  where
+    go op
+        = case operatorOp op of
+              Op_Tj         -> tjGetString $ operatorOperands op
+              Op_apostrophe -> apoGetString $ operatorOperands op
+              Op_quote      -> quoteGetString $ operatorOperands op
+              Op_TJ         -> tJGetString $ operatorOperands op
+              _             -> return ()
+
+    tjGetString [Bytes bs]
+        = modify $ \b -> b <> byteString bs
+    tjGetString _
+        = return ()
+
+    apoGetString ops@[Bytes bs]
+        = modify (\b -> b <> char8 '\n') >> tjGetString ops
+    apoGetString _
+        = return ()
+
+    quoteGetString [_,_, bytes@(Bytes bs)]
+        = apoGetString [bytes]
+    quoteGetString _
+        = return ()
+
+    tJGetString [Array objs]
+        = for_ objs $ \obj ->
+              case obj of
+                  bs@(Bytes _) -> tjGetString [bs]
+                  _            -> return ()
+    tJGetString _
+        = return ()
 
 --------------------------------------------------------------------------------
 -- Utilities

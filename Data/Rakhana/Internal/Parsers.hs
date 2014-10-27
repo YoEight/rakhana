@@ -100,8 +100,6 @@ parseNameString :: Parser ByteString
 parseNameString
     = do _ <- char '/'
          takeWhile1 isRegularChar
-  where
-    isRegularChar c = c `notElem` "[]()/<>{}% \n\r"
 
 --------------------------------------------------------------------------------
 parseStringBytes :: Parser Object
@@ -191,19 +189,6 @@ parseObject = skipSpace >> go
          parseNull
 
 --------------------------------------------------------------------------------
-parseContentObject :: Parser Object
-parseContentObject = skipSpace >> go
-  where
-    go = parseName        <|>
-         parseDict        <|>
-         parseBoolean     <|>
-         parseArray       <|>
-         parseHexBytes    <|>
-         parseStringBytes <|>
-         parseNumber      <|>
-         parseNull
-
---------------------------------------------------------------------------------
 parseStreamHeader :: Parser ()
 parseStreamHeader
     = do skipSpace
@@ -255,6 +240,10 @@ parseEndOfObject
     = do skipSpace
          _ <- string "endobj"
          return ()
+
+--------------------------------------------------------------------------------
+isRegularChar :: Char -> Bool
+isRegularChar c = c `notElem` "[]()/<>{}% \n\r"
 
 --------------------------------------------------------------------------------
 -- Utilities

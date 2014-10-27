@@ -18,6 +18,7 @@ import Data.ByteString (ByteString)
 --------------------------------------------------------------------------------
 import Data.Rakhana.Internal.Types
 
+
 --------------------------------------------------------------------------------
 -- | Operator with arguments
 data Operator
