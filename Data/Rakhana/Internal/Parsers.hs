@@ -101,7 +101,7 @@ parseNameString
     = do _ <- char '/'
          takeWhile1 isRegularChar
   where
-    isRegularChar c = c `notElem` "[]()/<>{}% \n\r"
+    isRegularChar c = c `notElem` ("[]()/<>{}% \n\r" :: String)
 
 --------------------------------------------------------------------------------
 parseStringBytes :: Parser Object
@@ -118,7 +118,7 @@ parseStringBytes
                      | otherwise -> takeStr (lvl-1) (c:res)
                  '\\'
                      -> do c' <- anyChar
-                           if c' `elem` "()\\"
+                           if c' `elem` ("()\\" :: String)
                                then takeStr lvl (c':res)
                                else
                                case c' of

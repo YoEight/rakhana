@@ -73,11 +73,12 @@ library
                     TemplateHaskell
 
   -- Other library packages from which modules are imported.
-  build-depends:       base         >=4.7 && <4.8
+  build-depends:       base         >=4.8 && < 4.9
                      , attoparsec   == 0.12.*
                      , bytestring
                      , containers   == 0.5.*
-                     , lens         == 4.4.*
+                     , lens         >= 4.4.0
+                     , lens-action
                      , mtl
                      , pipes        == 4.*
                      , scientific
