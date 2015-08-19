@@ -39,6 +39,7 @@ import qualified Data.Set             as S
 --------------------------------------------------------------------------------
 import           Codec.Compression.Zlib (decompress)
 import           Control.Lens
+import           Control.Lens.Action
 import           Control.Monad.Error.Class
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict

@@ -28,6 +28,7 @@ import Data.Traversable (sequence)
 
 --------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Lens.Action
 import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------

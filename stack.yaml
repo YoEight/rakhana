@@ -1,0 +1,7 @@
+system-ghc: False
+flags: {}
+packages:
+- '.'
+- examples/
+extra-deps: []
+resolver: lts-3.1
