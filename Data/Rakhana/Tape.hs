@@ -28,9 +28,7 @@ module Data.Rakhana.Tape
     , driveSeek
     , driveTop
     , fileTape
-    , fileTape'
     , runDrive
-    , runDrive'
     ) where
 
 --------------------------------------------------------------------------------
@@ -107,25 +105,9 @@ newTapeState path
     = fmap (initTapeState path) $ openBinaryFile path ReadMode
 
 --------------------------------------------------------------------------------
-fileTape :: MonadIO m => FilePath -> Tape m r
-fileTape path
-    = do s <- liftIO $ newTapeState path
-         r <- respond Unit
-         tapeLoop dispatch s r
-  where
-    dispatch s Top           = tapeTop s
-    dispatch s Bottom        = tapeBottom s
-    dispatch s (Seek i)      = tapeSeek s i
-    dispatch s GetSeek       = tapeGetSeek s
-    dispatch s (Get i)       = tapeGet s i
-    dispatch s (GetLazy i)   = tapeGetLazy s i
-    dispatch s (Direction o) = tapeDirection s o
-    dispatch s (Peek i)      = tapePeek s i
-    dispatch s (Discard i)   = tapeDiscard s i
 
-
-fileTape' :: MonadIO m => FilePath -> TReq -> Tape m r
-fileTape' path r =
+fileTape :: MonadIO m => FilePath -> TReq -> Tape m r
+fileTape path r =
     do s <- liftIO $ newTapeState path
        tapeLoop dispatch s r
   where
@@ -344,8 +326,5 @@ driveDiscard :: Monad m => Int -> Drive m ()
 driveDiscard i = void $ request $ Discard i
 
 --------------------------------------------------------------------------------
-runDrive :: Monad m  => (forall r. Tape m r) -> Drive m a  -> m a
-runDrive tape drive = runEffect (tape >>~ const drive)
-
-runDrive' server drive = runEffect $ server +>> drive
+runDrive server drive = runEffect $ server +>> drive
 
