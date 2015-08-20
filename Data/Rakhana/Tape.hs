@@ -105,11 +105,11 @@ newTapeState path
     = fmap (initTapeState path) $ openBinaryFile path ReadMode
 
 --------------------------------------------------------------------------------
-fileTape :: MonadIO m => FilePath -> Tape m r
-fileTape path
-    = do s <- liftIO $ newTapeState path
-         r <- respond Unit
-         tapeLoop dispatch s r
+
+fileTape :: MonadIO m => FilePath -> TReq -> Tape m r
+fileTape path r =
+    do s <- liftIO $ newTapeState path
+       tapeLoop dispatch s r
   where
     dispatch s Top           = tapeTop s
     dispatch s Bottom        = tapeBottom s
@@ -326,5 +326,5 @@ driveDiscard :: Monad m => Int -> Drive m ()
 driveDiscard i = void $ request $ Discard i
 
 --------------------------------------------------------------------------------
-runDrive :: Monad m  => (forall r. Tape m r) -> Drive m a  -> m a
-runDrive tape drive = runEffect (tape >>~ const drive)
+runDrive server drive = runEffect $ server +>> drive
+
